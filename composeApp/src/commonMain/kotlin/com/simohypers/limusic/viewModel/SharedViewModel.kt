@@ -892,6 +892,15 @@ class SharedViewModel(
         _libraryTabRequest.value = tab
     }
 
+    // A room invite from a limusic://listen link; the Listen Together screen fills it in (it does
+    // not join by itself) and clears the request.
+    private val _listenInviteRequest = MutableStateFlow<String?>(null)
+    val listenInviteRequest: StateFlow<String?> = _listenInviteRequest.asStateFlow()
+
+    fun requestListenInvite(invite: String?) {
+        _listenInviteRequest.value = invite
+    }
+
     fun putString(
         key: String,
         value: String,
