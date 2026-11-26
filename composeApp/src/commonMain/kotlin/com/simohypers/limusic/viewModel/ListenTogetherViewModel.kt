@@ -68,6 +68,19 @@ class ListenTogetherViewModel(
     /** Between pressing Start or Join and being in the room. */
     val requesting: StateFlow<Boolean> = _requesting.asStateFlow()
 
+    /** Hosting: join requests are approved without asking. Saved, so it holds for every room. */
+    val autoAdmit: StateFlow<Boolean> =
+        dataStore
+            .getString(ListenTogetherPrefs.AUTO_ADMIT)
+            .map { it == DataStoreManager.TRUE }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** Turning it on also lets in whoever is waiting (the repository passes it to the session). */
+    fun setAutoAdmit(on: Boolean) =
+        viewModelScope.launch {
+            dataStore.putString(ListenTogetherPrefs.AUTO_ADMIT, if (on) DataStoreManager.TRUE else DataStoreManager.FALSE)
+        }
+
     /** On the server picked in the ⋮ sheet. */
     fun host(name: String) = start(name, server = null) { repository.createRoom(name) }
 

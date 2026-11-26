@@ -67,6 +67,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -77,6 +78,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -136,6 +138,8 @@ import limusic.composeapp.generated.resources.devices_paused
 import limusic.composeapp.generated.resources.devices_playing
 import limusic.composeapp.generated.resources.ltd_alone_hint
 import limusic.composeapp.generated.resources.ltd_approve
+import limusic.composeapp.generated.resources.ltd_auto_admit
+import limusic.composeapp.generated.resources.ltd_auto_admit_hint
 import limusic.composeapp.generated.resources.ltd_connecting
 import limusic.composeapp.generated.resources.ltd_copied
 import limusic.composeapp.generated.resources.ltd_copy
@@ -597,6 +601,24 @@ private fun Room(
                     isSelf = u.userId == state.selfUserId,
                     onManage = { managing = u }.takeIf { state.isHost && u.userId != state.selfUserId },
                 )
+            }
+        }
+    }
+
+    if (state.isHost) {
+        val autoAdmit by viewModel.autoAdmit.collectAsStateWithLifecycle()
+        Spacer(Modifier.height(12.dp))
+        SettingCard {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .toggleable(value = autoAdmit, role = Role.Switch, onValueChange = viewModel::setAutoAdmit)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TitleAndLine(stringResource(Res.string.ltd_auto_admit), stringResource(Res.string.ltd_auto_admit_hint), Modifier.weight(1f))
+                Spacer(Modifier.width(12.dp))
+                Switch(checked = autoAdmit, onCheckedChange = null)
             }
         }
     }

@@ -324,6 +324,10 @@ class MainActivity : AppCompatActivity() {
                         runBlocking { ComposeResUtils.getResString(ComposeResUtils.StringType.GUEST_ADDED, type.username, type.title) }
                     }
 
+                    is ToastType.UserJoined -> {
+                        runBlocking { ComposeResUtils.getResString(ComposeResUtils.StringType.USER_JOINED, type.username) }
+                    }
+
                 },
             )
         }
