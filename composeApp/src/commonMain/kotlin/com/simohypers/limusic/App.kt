@@ -60,6 +60,7 @@ import com.simohypers.limusic.ui.component.UpdateBanner
 import com.simohypers.limusic.ui.icon.ArrowForwardIos
 import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.navigation.destination.home.HomeDestination
+import com.simohypers.limusic.ui.navigation.destination.home.ListenTogetherDestination
 import com.simohypers.limusic.ui.navigation.destination.home.NotificationDestination
 import com.simohypers.limusic.ui.navigation.destination.library.LibraryDestination
 import com.simohypers.limusic.ui.navigation.destination.search.SearchDestination
@@ -84,6 +85,7 @@ import com.simohypers.limusic.ui.theme.desktopWindowLight
 import com.simohypers.limusic.updater.Updater
 import com.simohypers.limusic.utils.isAppLinkAvailable
 import com.simohypers.limusic.utils.libraryTabOf
+import com.simohypers.limusic.viewModel.ListenTogetherViewModel
 import com.simohypers.limusic.viewModel.SharedViewModel
 import com.simohypers.limusic.viewModel.base.BaseViewModel
 import dev.chrisbanes.haze.hazeSource
@@ -236,6 +238,19 @@ fun App(
                     // limusic://search → the search screen (the launcher shortcut)
                     "search" -> {
                         navController.navigateToTab(SearchDestination)
+                    }
+
+                    // limusic://listen?room=CODE[&server=host] → a Listen Together room's QR code,
+                    // read by a camera app. Fills the code in; joining waits for a tap, since any
+                    // page can open a limusic:// link.
+                    "listen" -> {
+                        val invite = ListenTogetherViewModel.inviteOfLink(data.toString())
+                        if (invite == null) {
+                            viewModel.makeToast(getString(Res.string.this_link_is_not_supported))
+                        } else {
+                            viewModel.requestListenInvite(invite)
+                            navController.navigate(ListenTogetherDestination) { launchSingleTop = true }
+                        }
                     }
 
                     // limusic://library                     → the Library tab

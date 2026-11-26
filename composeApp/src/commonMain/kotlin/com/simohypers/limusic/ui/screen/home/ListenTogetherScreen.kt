@@ -2,6 +2,55 @@ package com.simohypers.limusic.ui.screen.home
 
 import com.simohypers.limusic.ui.theme.rounded
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionOnScreen
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.util.lerp
+import com.simohypers.limusic.expect.ui.KeepScreenBright
+import com.simohypers.limusic.expect.ui.encodeQr
+import com.simohypers.limusic.ui.component.RoomQrCode
+import com.simohypers.limusic.ui.component.RoomQrScanner
+import com.simohypers.limusic.ui.component.qrInks
+import com.simohypers.limusic.ui.icon.QrCode
+import com.simohypers.limusic.ui.icon.QrCodeScanner
+import com.simohypers.limusic.viewModel.SharedViewModel
+import kotlin.math.PI
+import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import org.jetbrains.compose.resources.getString
+import org.koin.compose.koinInject
+import limusic.composeapp.generated.resources.ltd_err_name_scan
+import limusic.composeapp.generated.resources.ltd_hide_qr
+import limusic.composeapp.generated.resources.ltd_in_another_room
+import limusic.composeapp.generated.resources.ltd_invite_server
+import limusic.composeapp.generated.resources.ltd_qr_description
+import limusic.composeapp.generated.resources.ltd_qr_hint
+import limusic.composeapp.generated.resources.ltd_scan
+import limusic.composeapp.generated.resources.ltd_show_qr
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -141,11 +190,30 @@ fun ListenTogetherScreen(
     navController: NavController,
     innerPadding: PaddingValues,
     viewModel: ListenTogetherViewModel = koinViewModel(),
+    sharedViewModel: SharedViewModel = koinInject(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val requesting by viewModel.requesting.collectAsStateWithLifecycle()
     val waiting = !state.inRoom && (requesting || state.pendingJoinCode != null)
     var menu by rememberSaveable { mutableStateOf(false) }
+    var invite by rememberSaveable { mutableStateOf("") }
+
+    // A limusic://listen link, most often a room's QR code read by the camera app: its code goes in
+    // the Join box and waits for a tap. Already in a room, it only says so.
+    val linkInvite by sharedViewModel.listenInviteRequest.collectAsStateWithLifecycle()
+    LaunchedEffect(linkInvite) {
+        val link = linkInvite ?: return@LaunchedEffect
+        sharedViewModel.requestListenInvite(null)
+        val code = codeOf(link, ListenTogetherViewModel.ROOM_CODE_LENGTH)
+        when {
+            code == (state.roomCode ?: state.pendingJoinCode) -> Unit
+            state.inRoom || waiting -> sharedViewModel.makeToast(getString(Res.string.ltd_in_another_room))
+            else -> {
+                invite = link
+                viewModel.clearError()
+            }
+        }
+    }
 
     Column(
         Modifier
@@ -168,7 +236,7 @@ fun ListenTogetherScreen(
         Column(Modifier.padding(horizontal = 16.dp).animateContentSize()) {
             when {
                 waiting -> Waiting(state.connection, viewModel::cancel)
-                !state.inRoom -> Start(state, viewModel)
+                !state.inRoom -> Start(state, viewModel, invite) { invite = it }
                 else -> Room(state, viewModel)
             }
             Spacer(Modifier.height(innerPadding.calculateBottomPadding() + 24.dp))
@@ -214,27 +282,56 @@ private fun Waiting(
     }
 }
 
-/** Not in a room: who you are, then start one or join one. */
+/** Not in a room: who you are, then start one or join one (typed, or scanned from a QR code). */
 @Composable
 private fun Start(
     state: ListenTogetherRoom,
     viewModel: ListenTogetherViewModel,
+    invite: String,
+    onInvite: (String) -> Unit,
 ) {
     val savedName by viewModel.savedName.collectAsStateWithLifecycle()
+    val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
     var name by rememberSaveable { mutableStateOf("") }
-    var invite by rememberSaveable { mutableStateOf("") }
     var editName by rememberSaveable { mutableStateOf(false) }
     var localError by remember { mutableStateOf<StringResource?>(null) }
+    var scanning by rememberSaveable { mutableStateOf(false) }
+    var cameraAt by remember { mutableStateOf<Offset?>(null) }
+    val nameFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val nudge = remember { Animatable(1f) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(savedName) { savedName?.takeIf { it.isNotEmpty() }?.let { name = it } }
+    val nameMissing = localError == Res.string.ltd_err_enter_name || localError == Res.string.ltd_err_name_scan
 
-    val go: (hosting: Boolean) -> Unit = { hosting ->
+    val go: (hosting: Boolean, code: String) -> Unit = { hosting, code ->
         localError = null
         viewModel.clearError()
         val n = name.trim()
         when {
             n.isEmpty() -> localError = Res.string.ltd_err_enter_name
             hosting -> viewModel.host(n)
-            !viewModel.join(n, invite) -> localError = Res.string.ltd_err_paste_code
+            !viewModel.join(n, code) -> localError = Res.string.ltd_err_paste_code
+        }
+    }
+    // The host sees the name in the join request, so the camera waits for one: the name card shakes
+    // and, the first time, takes the keyboard.
+    val scan: () -> Unit = {
+        localError = null
+        viewModel.clearError()
+        if (name.isBlank()) {
+            localError = Res.string.ltd_err_name_scan
+            scope.launch {
+                nudge.snapTo(0f)
+                nudge.animateTo(1f, tween(460, easing = LinearEasing))
+            }
+            if (savedName == "") {
+                runCatching { nameFocus.requestFocus() }
+                keyboard?.show()
+            }
+        } else {
+            keyboard?.hide()
+            scanning = true
         }
     }
 
@@ -252,14 +349,24 @@ private fun Start(
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // The name is typed here once; after that it is a row, edited in a sheet.
+        val shake = Modifier.graphicsLayer { translationX = shakeAt(nudge.value) * 10.dp.toPx() }
         when (savedName) {
             null -> Unit
             "" ->
-                SettingCard {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(stringResource(Res.string.ltd_your_name), style = typo().labelMedium, color = MaterialTheme.colorScheme.onSurface)
-                        Spacer(Modifier.height(10.dp))
-                        NameField(name) { name = it }
+                Box(shake) {
+                    SettingCard {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(stringResource(Res.string.ltd_your_name), style = typo().labelMedium, color = MaterialTheme.colorScheme.onSurface)
+                            Spacer(Modifier.height(10.dp))
+                            NameField(
+                                name,
+                                error = localError.takeIf { nameMissing }?.let { stringResource(it) },
+                                modifier = Modifier.focusRequester(nameFocus),
+                            ) {
+                                name = it
+                                if (nameMissing) localError = null
+                            }
+                        }
                     }
                 }
             else ->
@@ -281,7 +388,7 @@ private fun Start(
 
         SettingCard {
             Row(
-                Modifier.fillMaxWidth().clickable { go(true) }.padding(16.dp),
+                Modifier.fillMaxWidth().clickable { go(true, invite) }.padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 RoundIcon(LimusicIcons.Add)
@@ -299,19 +406,57 @@ private fun Start(
                     TitleAndLine(stringResource(Res.string.ltd_join_room), stringResource(Res.string.ltd_join_room_hint), Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(16.dp))
-                CodeInput(invite, length = ROOM_CODE_LENGTH) { invite = it }
+                CodeInput(invite, length = ROOM_CODE_LENGTH, onInviteChange = onInvite)
+                // A pasted or linked invite for someone's own server: say which, before Join goes there.
+                if ('@' in invite) {
+                    Text(
+                        stringResource(Res.string.ltd_invite_server, invite.substringAfterLast('@')),
+                        style = typo().bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 8.dp, start = 2.dp),
+                    )
+                }
                 Spacer(Modifier.height(16.dp))
-                Button(
-                    onClick = { go(false) },
-                    enabled = codeOf(invite, ROOM_CODE_LENGTH).length == ROOM_CODE_LENGTH,
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                ) { Text(stringResource(Res.string.ltd_join), color = LocalContentColor.current) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Button(
+                        onClick = { go(false, invite) },
+                        enabled = codeOf(invite, ROOM_CODE_LENGTH).length == ROOM_CODE_LENGTH,
+                        modifier = Modifier.weight(1f).height(48.dp),
+                    ) { Text(stringResource(Res.string.ltd_join), color = LocalContentColor.current) }
+                    Spacer(Modifier.width(8.dp))
+                    ScanButton(
+                        ready = name.isNotBlank(),
+                        onClick = scan,
+                        modifier =
+                            Modifier.onGloballyPositioned {
+                                cameraAt = it.positionOnScreen() + Offset(it.size.width / 2f, it.size.height / 2f)
+                            },
+                    )
+                }
             }
         }
     }
 
-    (localError?.let { stringResource(it) } ?: state.error)?.let {
+    // A missing name shows under the name field when there is one.
+    (localError?.takeUnless { nameMissing && savedName == "" }?.let { stringResource(it) } ?: state.error)?.let {
         Text(it, style = typo().bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(start = 16.dp, top = 10.dp))
+    }
+
+    if (scanning) {
+        RoomQrScanner(
+            name = name.trim(),
+            origin = cameraAt,
+            onRoom = { scanned ->
+                scanning = false
+                onInvite(scanned)
+                // A code on someone's own server waits for Join, with "On host" under the boxes:
+                // joining moves this phone onto that server, and a printed code can point anywhere.
+                if (ListenTogetherViewModel.serverOf(scanned).let { it == "" || it == serverUrl }) go(false, scanned)
+            },
+            onDismiss = { scanning = false },
+        )
     }
 
     if (editName) {
@@ -335,6 +480,8 @@ private fun Start(
 @Composable
 private fun NameField(
     value: String,
+    error: String? = null,
+    modifier: Modifier = Modifier,
     onChange: (String) -> Unit,
 ) {
     OutlinedTextField(
@@ -342,10 +489,42 @@ private fun NameField(
         onValueChange = { onChange(it.take(ListenTogetherViewModel.MAX_NAME_LENGTH)) },
         singleLine = true,
         placeholder = { Text(stringResource(Res.string.ltd_your_name)) },
+        isError = error != null,
+        supportingText = error?.let { { Text(it) } },
         shape = rounded(12.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
     )
 }
+
+/** Opens the QR scanner. Muted until there is a name to join with, but it still answers a tap. */
+@Composable
+private fun ScanButton(
+    ready: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val container by animateColorAsState(
+        if (ready) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.08f),
+    )
+    val content by animateColorAsState(
+        if (ready) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+    )
+    val label = stringResource(Res.string.ltd_scan)
+    Box(
+        modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(container)
+            .clickable(onClickLabel = label, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(LimusicIcons.QrCodeScanner, contentDescription = null, tint = content, modifier = Modifier.size(22.dp))
+    }
+}
+
+/** A head shake: three swings that die down as [t] runs from 0 to 1, still at 1. */
+private fun shakeAt(t: Float): Float = sin(t * 6f * PI.toFloat()) * (1f - t)
 
 /** In a room: the code to hand out, what plays, who is here, and Leave. */
 @Composable
@@ -539,6 +718,12 @@ private fun CodeCard(
                     Text(stringResource(if (copied) Res.string.ltd_copied else Res.string.ltd_copy), color = LocalContentColor.current)
                 }
             }
+            Spacer(Modifier.height(8.dp))
+            QrToggle(
+                link = ListenTogetherViewModel.makeLink(serverUrl, code),
+                code = code,
+                live = state.connection is RoomConnection.Connected,
+            )
             if (alone) {
                 Text(
                     stringResource(Res.string.ltd_alone_hint),
@@ -551,6 +736,108 @@ private fun CodeCard(
         }
     }
 }
+
+/**
+ * "Show QR code", which grows in place into the room's QR code on a white tile: the button stretches
+ * into a square, then the code builds itself. Tapping the tile or Hide folds it back. While it
+ * shows, the screen is at full brightness; while the connection is down the code dims behind a
+ * loader, since a scan then finds nobody to let the guest in.
+ */
+@Composable
+private fun QrToggle(
+    link: String,
+    code: String,
+    live: Boolean,
+) {
+    val matrix = remember(link) { encodeQr(link) } ?: return
+    var open by remember { mutableStateOf(false) }
+    val morph = remember { Animatable(0f) }
+    val reveal = remember { Animatable(0f) }
+    LaunchedEffect(open) {
+        if (open) {
+            launch { morph.animateTo(1f, spring(dampingRatio = 1f, stiffness = 320f)) }
+            delay(180)
+            reveal.animateTo(1f, tween(650, easing = LinearEasing))
+        } else {
+            launch { reveal.animateTo(0f, tween(160)) }
+            delay(70)
+            morph.animateTo(0f, spring(dampingRatio = 1f, stiffness = 420f))
+        }
+    }
+    if (open) KeepScreenBright()
+
+    val (ink, eyeInk) = qrInks(MaterialTheme.colorScheme.primary)
+    val button = MaterialTheme.colorScheme.secondaryContainer
+    val onButton = MaterialTheme.colorScheme.onSecondaryContainer
+    val dim by animateFloatAsState(if (live) 1f else 0.2f)
+    val labelShown by remember { derivedStateOf { morph.value < 0.34f } }
+    val codeShown by remember { derivedStateOf { morph.value > 0f } }
+    val toggleLabel = stringResource(if (open) Res.string.ltd_hide_qr else Res.string.ltd_show_qr)
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .layout { measurable, constraints ->
+                    val t = morph.value
+                    val full = constraints.maxWidth
+                    val square = min(full, QR_SIDE.roundToPx()).toFloat()
+                    val w = lerp(full.toFloat(), square, t).roundToInt().coerceIn(0, full)
+                    val h = lerp(48.dp.toPx(), square, t).roundToInt().coerceAtLeast(0)
+                    val placeable = measurable.measure(Constraints.fixed(w, h))
+                    layout(full, h) { placeable.place((full - w) / 2, 0) }
+                }.clip(rounded(24.dp))
+                .drawBehind { drawRect(lerp(button, Color.White, morph.value.coerceIn(0f, 1f))) }
+                .clickable(onClickLabel = toggleLabel, role = Role.Button) { open = !open },
+        ) {
+            if (labelShown) {
+                Row(
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .height(48.dp)
+                        .graphicsLayer { alpha = (1f - morph.value * 3f).coerceIn(0f, 1f) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(LimusicIcons.QrCode, contentDescription = null, tint = onButton, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(Res.string.ltd_show_qr), style = MaterialTheme.typography.labelLarge, color = onButton)
+                }
+            }
+            if (codeShown) {
+                RoomQrCode(
+                    matrix = matrix,
+                    reveal = { reveal.value },
+                    ink = ink,
+                    eyeInk = eyeInk,
+                    description = stringResource(Res.string.ltd_qr_description, code.chunked(4).joinToString(" ")),
+                    modifier = Modifier.fillMaxSize().graphicsLayer { alpha = dim },
+                )
+            }
+            if (open && !live) LimusicLoader(Modifier.align(Alignment.Center).size(40.dp))
+        }
+        AnimatedVisibility(
+            visible = open,
+            enter = fadeIn(tween(260, delayMillis = 300)) + expandVertically(tween(260)),
+            exit = fadeOut(tween(100)) + shrinkVertically(tween(220)),
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    stringResource(Res.string.ltd_qr_hint),
+                    style = typo().bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+                TextButton(onClick = { open = false }) {
+                    Text(stringResource(Res.string.ltd_hide_qr), color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+    }
+}
+
+/** The QR tile's side, or the card's width if that is less. */
+private val QR_SIDE = 272.dp
 
 @Composable
 private fun Person(
@@ -698,4 +985,4 @@ private fun ServerSheet(
     }
 }
 
-private const val ROOM_CODE_LENGTH = 8
+private const val ROOM_CODE_LENGTH = ListenTogetherViewModel.ROOM_CODE_LENGTH
