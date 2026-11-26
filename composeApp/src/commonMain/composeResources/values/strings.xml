@@ -727,6 +727,9 @@
     <string name="ltd_host_controls">The host controls playback. Tap a song to add it to the queue.</string>
     <string name="ltd_hosting">Hosting</string>
     <string name="ltd_join_requests">Join requests</string>
+    <string name="ltd_auto_admit">Let in anyone with the code</string>
+    <string name="ltd_auto_admit_hint">Nobody waits for you to tap Let in</string>
+    <string name="ltd_user_joined">%1$s joined</string>
     <string name="ltd_listening">Listening</string>
     <string name="ltd_make_host">Make host</string>
     <string name="ltd_resync">Re-sync</string>

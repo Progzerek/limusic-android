@@ -116,6 +116,7 @@ class ListenTogetherPlaybackBridge(
         scope.launch { publishPlayPauseAsHost() }
         scope.launch { publishSeeksAsHost() }
         scope.launch { addGuestSongsAsHost() }
+        scope.launch { session.admitted.collect { handler.showToast(ToastType.UserJoined(it)) } }
     }
 
     /**

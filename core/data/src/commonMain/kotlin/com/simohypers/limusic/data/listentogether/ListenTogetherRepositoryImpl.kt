@@ -6,11 +6,14 @@ import com.simohypers.limusic.domain.data.model.listentogether.RoomJoinRequest
 import com.simohypers.limusic.domain.data.model.listentogether.RoomMember
 import com.simohypers.limusic.domain.data.model.listentogether.RoomSuggestion
 import com.simohypers.limusic.domain.data.model.listentogether.RoomTrack
+import com.simohypers.limusic.domain.manager.DataStoreManager
 import com.simohypers.limusic.domain.repository.ListenTogetherRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import com.simohypers.limusic.listentogether.ConnectionState
 import com.simohypers.limusic.listentogether.ListenTogetherSession
@@ -29,6 +32,7 @@ import com.simohypers.limusic.listentogether.TrackInfo
  */
 class ListenTogetherRepositoryImpl(
     private val session: ListenTogetherSession,
+    dataStore: DataStoreManager,
     scope: CoroutineScope,
 ) : ListenTogetherRepository {
     private val _room = MutableStateFlow(ListenTogetherRoom())
@@ -36,6 +40,14 @@ class ListenTogetherRepositoryImpl(
 
     init {
         scope.launch { session.state.collect { _room.value = it.toDomain() } }
+        // The saved switch is the one source: the screen writes it, the session follows.
+        scope.launch {
+            dataStore
+                .getString(ListenTogetherPrefs.AUTO_ADMIT)
+                .map { it == DataStoreManager.TRUE }
+                .distinctUntilChanged()
+                .collect { session.setAutoAdmit(it) }
+        }
     }
 
     override fun connect() = session.connect()

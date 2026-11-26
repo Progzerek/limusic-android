@@ -340,4 +340,8 @@ sealed class ToastType(
         val title: String,
     ) : ToastType(username)
 
+    /** Hosting with auto-admit on, someone came in without a tap. */
+    data class UserJoined(
+        val username: String,
+    ) : ToastType(username)
 }

@@ -5,6 +5,7 @@ import limusic.composeapp.generated.resources.Res
 import limusic.composeapp.generated.resources.added_to_queue
 import limusic.composeapp.generated.resources.explicit_content_blocked
 import limusic.composeapp.generated.resources.ltd_guest_added
+import limusic.composeapp.generated.resources.ltd_user_joined
 import limusic.composeapp.generated.resources.ltd_host_controls
 import limusic.composeapp.generated.resources.new_albums
 import limusic.composeapp.generated.resources.new_singles
@@ -74,6 +75,10 @@ object ComposeResUtils {
                 getString(Res.string.ltd_guest_added, *format)
             }
 
+            StringType.USER_JOINED -> {
+                getString(Res.string.ltd_user_joined, *format)
+            }
+
         }
 
     enum class StringType {
@@ -90,5 +95,6 @@ object ComposeResUtils {
         HOST_CONTROLS_PLAYBACK,
         ADDED_TO_QUEUE,
         GUEST_ADDED,
+        USER_JOINED,
     }
 }

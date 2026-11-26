@@ -46,6 +46,7 @@ val listenTogetherModule =
         single<ListenTogetherRepository> {
             ListenTogetherRepositoryImpl(
                 session = get(),
+                dataStore = get(),
                 scope = get<CoroutineScope>(named(Config.SERVICE_SCOPE)),
             )
         }
