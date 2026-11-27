@@ -46,6 +46,23 @@ import kotlin.time.TimeSource
 private const val TAG = "DeviceLinkBridge"
 
 /**
+ * Where a list from the computer starts once its local files (blank ids, which this phone can't
+ * play) are left out: the tapped row's place among the playable ones, or, when the tapped row is
+ * a local file, the next playable track after it, as if the list had skipped what it can't play.
+ * Null when nothing from the tapped row on is playable: starting a song above it would be one the
+ * person didn't ask for.
+ */
+internal fun playableStart(
+    ids: List<String>,
+    start: Int?,
+): Int? {
+    if (ids.isEmpty()) return null
+    val from = (start ?: 0).coerceIn(0, ids.lastIndex)
+    val at = (from until ids.size).firstOrNull { ids[it].isNotBlank() } ?: return null
+    return at - ids.subList(0, at).count { it.isBlank() }
+}
+
+/**
  * Joins the device link to the local player, next to [ListenTogetherPlaybackBridge] and apart
  * from it: being linked changes nothing about Listen Together.
  *
@@ -259,8 +276,19 @@ class DeviceLinkBridge(
      */
     private suspend fun apply(action: RemoteAction) {
         when (action) {
-            RemoteAction.Play -> if (!handler.player.playWhenReady) handler.onPlayerEvent(PlayerEvent.PlayPause)
-            RemoteAction.Pause -> if (handler.player.playWhenReady) handler.onPlayerEvent(PlayerEvent.PlayPause)
+            // Not the PlayPause toggle: it goes by isPlaying, false while a track buffers, so a pause
+            // sent then started the music. The adapter's own play()/pause() keep its play-when-ready
+            // state; the progress loop is what the toggle would have started or stopped.
+            RemoteAction.Play ->
+                if (!handler.player.playWhenReady) {
+                    handler.player.play()
+                    handler.startProgressUpdate()
+                }
+            RemoteAction.Pause ->
+                if (handler.player.playWhenReady) {
+                    handler.player.pause()
+                    handler.stopProgressUpdate()
+                }
             RemoteAction.Next -> handler.onPlayerEvent(PlayerEvent.Next)
             RemoteAction.Previous -> handler.onPlayerEvent(PlayerEvent.Previous)
             is RemoteAction.Seek -> handler.player.seekTo(action.positionMs.coerceAtLeast(0L))
@@ -268,9 +296,9 @@ class DeviceLinkBridge(
             is RemoteAction.SetVolume -> Unit
             is RemoteAction.PlayTrack -> handler.loadMediaItem(action.track.toTrack(), Config.SONG_CLICK)
             is RemoteAction.PlayTracks -> {
+                val start = playableStart(action.tracks.map { it.id }, action.start) ?: return
                 val tracks = action.tracks.filter { it.id.isNotBlank() }.map { it.toTrack() }
-                val start = action.start?.coerceIn(0, tracks.lastIndex.coerceAtLeast(0)) ?: 0
-                val first = tracks.getOrNull(start) ?: return
+                val first = tracks[start]
                 handler.setQueueData(
                     QueueData.Data(
                         listTracks = tracks,
