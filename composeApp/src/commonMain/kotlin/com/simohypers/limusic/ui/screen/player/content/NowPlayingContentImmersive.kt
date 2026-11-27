@@ -129,8 +129,9 @@ import kotlin.math.pow
 /**
  * The Immersive Now Playing style: a style-internal dock (Lyrics · [Output | Listen Together] ·
  * Queue) swaps the BODY between three full-screen views instead of scrolling a single column, à la
- * [NowPlayingContentSpotify]/[NowPlayingContentM3Expressive]. MAIN stands on a mesh made of the
- * artwork's own colours; LYRICS and QUEUE on the frosted cover art — see [ImmersiveMainView].
+ * [NowPlayingContentSpotify]/[NowPlayingContentM3Expressive]. MAIN stands on the cover blurred to
+ * fill the page (a mesh of its colours under an animated artwork); LYRICS and QUEUE on the frosted
+ * cover art — see [ImmersiveMainView].
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -362,12 +363,13 @@ fun NowPlayingContentImmersive(
 }
 
 /**
- * MAIN: the artwork edge to edge at the top — uncropped, at its own proportions — dissolving into
- * a mesh of its own colours, with the title row, the current lyric and the shared cluster hung
- * from the bottom of the page.
+ * MAIN: the artwork edge to edge at the top, dissolving into the same cover blurred to fill the
+ * page, with the title row, the current lyric and the shared cluster hung from the bottom of the
+ * page.
  *
- * The artwork is square for a still cover: a full-width square, with everything else below it.
- * Apple Music's animated artwork (3:4 or 1:1) plays in a frame of its own shape, top-aligned, and
+ * A still cover fills the full width and [ARTWORK_HEIGHT_FRACTION] of the page, cropped either side,
+ * and its soft lower part runs under the title. Apple Music's animated artwork (3:4 or 1:1) plays
+ * uncropped on a mesh of its own colours, in a frame of its own shape, top-aligned, and
  * keeps the controls exactly where the still cover put them — they must not jump when the clip
  * arrives a few seconds into the track — so a tall clip's lower part fades out behind the title.
  *
@@ -423,24 +425,26 @@ private fun ImmersiveMainView(
     // real value so the first frame does not lay a video out against a wrong one.
     var bottomContentHeightDp by remember { mutableIntStateOf(430) }
 
-    // Every pager page reads its own cover into a mesh (ImmersiveArtworkPage), so the page behind can
-    // blend from one song's colours into the next exactly as far as the covers have slid, on a swipe
-    // and on the skip buttons alike, instead of waiting for the new song's cover to load first.
+    // Every pager page reads its own cover into a mesh (ImmersiveArtworkPage), so the page behind an
+    // animated artwork can blend from one song's colours into the next exactly as far as the covers
+    // have slid, on a swipe and on the skip buttons alike, and the status-bar wash knows how bright
+    // each cover's top is.
     val pageMeshes = remember { mutableStateMapOf<Int, ImmersiveMesh>() }
     // The animated artwork's still, once it is up: the page continues whatever is on screen above it.
     var clipStill by remember(animatedArtwork?.url) { mutableStateOf<ImageBitmap?>(null) }
     var clipFrameHeight by remember(animatedArtwork?.url) { mutableStateOf(0.dp) }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        // A full-width square: the cover at its own proportions, nothing cut off either side. Capped
-        // for a landscape window, where a full-width square would be taller than the page.
-        val artworkHeight = minOf(maxWidth, maxHeight * ARTWORK_MAX_HEIGHT_FRACTION)
+        // Full width and a share of the page tall, cropped to fill: on a phone that is taller than
+        // wide, so the cover is drawn larger than the screen's width and loses a strip either side,
+        // and its soft lower part runs under the title.
+        val artworkHeight = maxHeight * ARTWORK_HEIGHT_FRACTION
         val clipMaxHeight = maxHeight * ANIMATED_ARTWORK_MAX_HEIGHT_FRACTION
         val artworkFade = artworkHeight * ARTWORK_FADE_FRACTION
         val showsClip = animatedArtwork != null && clipStill != null
 
         // The page itself. A video keeps the frosted cover behind it and a fullscreen canvas the black
-        // page, as before; everything else stands on the mesh, hung from where the artwork ends.
+        // page, as before; everything else stands on the blurred covers or the mesh (below).
         val meshPage = !fullscreenCanvas && !isVideoBackdrop && !state.isShort
         val clipMesh =
             if (meshPage) {
@@ -455,7 +459,12 @@ private fun ImmersiveMainView(
             (if (showsClip && page == state.currentOrderIndex) clipMesh else null) ?: pageMeshes[page]
         val mesh = if (meshPage) meshAt(lowerPage) else null
         val meshSeam = if (showsClip) clipFrameHeight else artworkHeight
-        if (meshPage) {
+        // Under a cover: the covers themselves, blurred to fill the page and changing with the pager.
+        // An animated artwork keeps the mesh, which its overlay below has to match.
+        val coverPage = meshPage && !showsClip
+        if (coverPage) {
+            PagerFrostedCover(state, wash = Color.Black, washFrom = COVER_PAGE_WASH_TOP, washTo = COVER_PAGE_WASH_BOTTOM)
+        } else if (meshPage) {
             ImmersiveMeshBackdrop(
                 mesh = mesh,
                 seam = meshSeam,
@@ -504,6 +513,17 @@ private fun ImmersiveMainView(
                     clipStill = still
                     clipFrameHeight = height
                 },
+            )
+        }
+
+        // The cover dimmed a little, more towards the bottom, so the title on its soft lower part
+        // and the controls below stay readable.
+        if (coverPage) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(smoothScrimBrush(from = Color.Black.copy(alpha = COVER_DIM_TOP), to = Color.Black.copy(alpha = COVER_DIM_BOTTOM))),
             )
         }
 
@@ -596,8 +616,7 @@ private fun ImmersiveMainView(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth(),
         ) {
-            // Hung from the bottom of the page. Whatever height is left above it and below the
-            // artwork is the mesh continuing the artwork's own colours.
+            // Hung from the bottom of the page, the title over the cover's soft lower part.
             Column(
                 modifier =
                     Modifier
@@ -928,7 +947,7 @@ internal fun ImmersiveMainTitleRow(
  * One pager page. Current page: the cover stays composed (alpha 0 under a fullscreen canvas/video,
  * or once an animated artwork has faded in over it) so [NowPlayingContentActions.onArtworkBitmap]
  * keeps feeding the palette — otherwise the page colours would go stale on the next track if it
- * also opens on a canvas. Adjacent pages: a static thumbnail in the same full-width square.
+ * also opens on a canvas. Adjacent pages: a static thumbnail in the same full-width box.
  */
 @Composable
 private fun ImmersiveArtworkPage(
@@ -1559,17 +1578,27 @@ private const val ARTWORK_FADE_FRACTION = 0.25f
 
 // Where each cover layer starts to clear and is gone, as shares of the cover's height from the
 // top, how far the heavy layer runs past the cover's bottom edge, and the two blurs (CoverBlurLayers).
-private const val COVER_SHARP_UNTIL = 0.55f
-private const val COVER_SHARP_GONE = 0.85f
-private const val COVER_SOFT_UNTIL = 0.68f
-private const val COVER_SOFT_GONE = 0.94f
-private const val COVER_HEAVY_UNTIL = 0.75f
+private const val COVER_SHARP_UNTIL = 0.64f
+private const val COVER_SHARP_GONE = 0.92f
+private const val COVER_SOFT_UNTIL = 0.76f
+private const val COVER_SOFT_GONE = 1f
+private const val COVER_HEAVY_UNTIL = 0.86f
 private const val COVER_BLEED_FRACTION = 0.35f
 private val COVER_SOFT_BLUR = 12.dp
 private val COVER_HEAVY_BLUR = 40.dp
 
-// A full-width square cover fits a portrait page with room to spare; only a landscape window is
-// short enough for this cap to bite.
+// The cover's height as a share of the page (the main view's cover, cropped to fill).
+private const val ARTWORK_HEIGHT_FRACTION = 0.6f
+
+// The black over the blurred covers behind the page, and over the whole page under the controls,
+// top to bottom.
+private const val COVER_PAGE_WASH_TOP = 0.1f
+private const val COVER_PAGE_WASH_BOTTOM = 0.25f
+private const val COVER_DIM_TOP = 0.18f
+private const val COVER_DIM_BOTTOM = 0.38f
+
+// The cap on the animated artwork page's cover square, which a landscape window is short enough
+// to reach.
 private const val ARTWORK_MAX_HEIGHT_FRACTION = 0.62f
 
 // A 3:4 animated artwork runs under the title row by design; this only stops a landscape window
