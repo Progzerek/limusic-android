@@ -1,5 +1,6 @@
 package com.simohypers.limusic.ui.screen.library
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -94,6 +96,11 @@ fun LibrarySearchScreen(
         viewModel.loadAllLibraryData()
     }
 
+    val listState = rememberLazyListState()
+    LaunchedEffect(selectedFilter, searchQuery) {
+        listState.scrollToItem(0)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -169,119 +176,122 @@ fun LibrarySearchScreen(
                 )
             }
         } else {
-            val showPlaylists = selectedFilter == LibrarySearchFilter.ALL || selectedFilter == LibrarySearchFilter.PLAYLISTS
-            val showAlbums = selectedFilter == LibrarySearchFilter.ALL || selectedFilter == LibrarySearchFilter.ALBUMS
-            val showArtists = selectedFilter == LibrarySearchFilter.ALL || selectedFilter == LibrarySearchFilter.ARTISTS
-            val showSongs = selectedFilter == LibrarySearchFilter.ALL || selectedFilter == LibrarySearchFilter.SONGS
+            Crossfade(targetState = selectedFilter, label = "LibrarySearchFilterCrossfade") { filter ->
+                val showPlaylists = filter == LibrarySearchFilter.ALL || filter == LibrarySearchFilter.PLAYLISTS
+                val showAlbums = filter == LibrarySearchFilter.ALL || filter == LibrarySearchFilter.ALBUMS
+                val showArtists = filter == LibrarySearchFilter.ALL || filter == LibrarySearchFilter.ARTISTS
+                val showSongs = filter == LibrarySearchFilter.ALL || filter == LibrarySearchFilter.SONGS
 
-            val hasResults = (showPlaylists && filteredPlaylists.isNotEmpty()) ||
-                    (showAlbums && filteredAlbums.isNotEmpty()) ||
-                    (showArtists && filteredArtists.isNotEmpty()) ||
-                    (showSongs && filteredSongs.isNotEmpty())
+                val hasResults = (showPlaylists && filteredPlaylists.isNotEmpty()) ||
+                        (showAlbums && filteredAlbums.isNotEmpty()) ||
+                        (showArtists && filteredArtists.isNotEmpty()) ||
+                        (showSongs && filteredSongs.isNotEmpty())
 
-            if (isLibraryLoading && !hasResults) {
-                CenterLoadingBox(modifier = Modifier.fillMaxSize())
-            } else if (!hasResults) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "No results found",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = innerPadding.copy(top = 0.dp),
-                ) {
-                    if (showSongs && filteredSongs.isNotEmpty()) {
-                        if (selectedFilter == LibrarySearchFilter.ALL) {
-                            item {
-                                LibrarySectionHeader(
-                                    icon = LimusicIcons.LibraryMusic,
-                                    title = stringResource(Res.string.songs),
-                                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
-                                    onMore = { selectedFilter = LibrarySearchFilter.SONGS },
-                                )
-                            }
-                        }
-                        items(filteredSongs, key = { "song_${it.videoId}" }) { track ->
-                            SongFullWidthItems(
-                                track = track,
-                                isPlaying = track.videoId == nowPlaying,
-                                modifier = Modifier,
-                                onClickListener = { videoId ->
-                                    viewModel.playSong(videoId)
-                                },
-                            )
-                        }
+                if (isLibraryLoading && !hasResults) {
+                    CenterLoadingBox(modifier = Modifier.fillMaxSize())
+                } else if (!hasResults) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "No results found",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
-
-                    if (showArtists && filteredArtists.isNotEmpty()) {
-                        if (selectedFilter == LibrarySearchFilter.ALL) {
-                            item {
-                                LibrarySectionHeader(
-                                    icon = LimusicIcons.PeopleAlt,
-                                    title = stringResource(Res.string.artists),
-                                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
-                                    onMore = { selectedFilter = LibrarySearchFilter.ARTISTS },
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        state = listState,
+                        contentPadding = innerPadding.copy(top = 0.dp),
+                    ) {
+                        if (showSongs && filteredSongs.isNotEmpty()) {
+                            if (filter == LibrarySearchFilter.ALL) {
+                                item {
+                                    LibrarySectionHeader(
+                                        icon = LimusicIcons.LibraryMusic,
+                                        title = stringResource(Res.string.songs),
+                                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                                        onMore = { selectedFilter = LibrarySearchFilter.SONGS },
+                                    )
+                                }
+                            }
+                            items(filteredSongs, key = { "song_${it.videoId}" }) { track ->
+                                SongFullWidthItems(
+                                    track = track,
+                                    isPlaying = track.videoId == nowPlaying,
+                                    modifier = Modifier,
+                                    onClickListener = { videoId ->
+                                        viewModel.playSong(videoId)
+                                    },
                                 )
                             }
                         }
-                        items(filteredArtists, key = { "artist_${it.artistChannelId()}" }) { artist ->
-                            ArtistFullWidthItems(
-                                data = artist,
-                                subtitle = (artist as? ArtistsResult)?.category?.takeIf { it.isNotEmpty() } ?: stringResource(Res.string.artists),
-                                onClickListener = {
-                                    val id = artist.artistChannelId()
-                                    if (id.isNotEmpty()) {
-                                        navController.navigate(ArtistDestination(channelId = id))
-                                    }
-                                },
-                            )
-                        }
-                    }
 
-                    if (showPlaylists && filteredPlaylists.isNotEmpty()) {
-                        if (selectedFilter == LibrarySearchFilter.ALL) {
-                            item {
-                                LibrarySectionHeader(
-                                    icon = LimusicIcons.QueueMusic,
-                                    title = stringResource(Res.string.playlists),
-                                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
-                                    onMore = { selectedFilter = LibrarySearchFilter.PLAYLISTS },
+                        if (showArtists && filteredArtists.isNotEmpty()) {
+                            if (filter == LibrarySearchFilter.ALL) {
+                                item {
+                                    LibrarySectionHeader(
+                                        icon = LimusicIcons.PeopleAlt,
+                                        title = stringResource(Res.string.artists),
+                                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                                        onMore = { selectedFilter = LibrarySearchFilter.ARTISTS },
+                                    )
+                                }
+                            }
+                            items(filteredArtists, key = { "artist_${it.artistChannelId()}" }) { artist ->
+                                ArtistFullWidthItems(
+                                    data = artist,
+                                    subtitle = (artist as? ArtistsResult)?.category?.takeIf { it.isNotEmpty() } ?: stringResource(Res.string.artists),
+                                    onClickListener = {
+                                        val id = artist.artistChannelId()
+                                        if (id.isNotEmpty()) {
+                                            navController.navigate(ArtistDestination(channelId = id))
+                                        }
+                                    },
                                 )
                             }
                         }
-                        items(filteredPlaylists, key = { "playlist_${it.playlistBrowseId()}" }) { playlist ->
-                            PlaylistFullWidthItems(
-                                data = playlist,
-                                onClickListener = { navController.openLibraryItem(playlist) },
-                            )
-                        }
-                    }
 
-                    if (showAlbums && filteredAlbums.isNotEmpty()) {
-                        if (selectedFilter == LibrarySearchFilter.ALL) {
-                            item {
-                                LibrarySectionHeader(
-                                    icon = LimusicIcons.Album,
-                                    title = stringResource(Res.string.albums),
-                                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
-                                    onMore = { selectedFilter = LibrarySearchFilter.ALBUMS },
+                        if (showPlaylists && filteredPlaylists.isNotEmpty()) {
+                            if (filter == LibrarySearchFilter.ALL) {
+                                item {
+                                    LibrarySectionHeader(
+                                        icon = LimusicIcons.QueueMusic,
+                                        title = stringResource(Res.string.playlists),
+                                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                                        onMore = { selectedFilter = LibrarySearchFilter.PLAYLISTS },
+                                    )
+                                }
+                            }
+                            items(filteredPlaylists, key = { "playlist_${it.playlistBrowseId()}" }) { playlist ->
+                                PlaylistFullWidthItems(
+                                    data = playlist,
+                                    onClickListener = { navController.openLibraryItem(playlist) },
                                 )
                             }
                         }
-                        items(filteredAlbums, key = { "album_${it.playlistBrowseId()}" }) { album ->
-                            PlaylistFullWidthItems(
-                                data = album,
-                                onClickListener = { navController.openLibraryItem(album) },
-                            )
+
+                        if (showAlbums && filteredAlbums.isNotEmpty()) {
+                            if (filter == LibrarySearchFilter.ALL) {
+                                item {
+                                    LibrarySectionHeader(
+                                        icon = LimusicIcons.Album,
+                                        title = stringResource(Res.string.albums),
+                                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                                        onMore = { selectedFilter = LibrarySearchFilter.ALBUMS },
+                                    )
+                                }
+                            }
+                            items(filteredAlbums, key = { "album_${it.playlistBrowseId()}" }) { album ->
+                                PlaylistFullWidthItems(
+                                    data = album,
+                                    onClickListener = { navController.openLibraryItem(album) },
+                                )
+                            }
                         }
                     }
                 }
