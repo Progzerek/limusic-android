@@ -23,6 +23,11 @@ import com.simohypers.limusic.domain.repository.LocalPlaylistRepository
 import com.simohypers.limusic.domain.repository.PlaylistRepository
 import com.simohypers.limusic.domain.repository.PodcastRepository
 import com.simohypers.limusic.domain.repository.SongRepository
+import com.simohypers.limusic.domain.data.entities.ArtistEntity
+import com.simohypers.limusic.domain.data.entities.PodcastsEntity
+import com.simohypers.limusic.domain.data.model.searchResult.albums.AlbumsResult
+import com.simohypers.limusic.domain.data.model.searchResult.artists.ArtistsResult
+import com.simohypers.limusic.domain.utils.withoutYouTubeTwins
 import com.simohypers.limusic.domain.utils.LocalResource
 import com.simohypers.limusic.domain.utils.isRadioPlaylistId
 import com.simohypers.limusic.domain.data.model.browse.album.Track
@@ -197,6 +202,95 @@ class LibraryViewModel(
 
     fun setDownloadsPaused(paused: Boolean) = downloadHandler.setPaused(paused)
 
+    val allPlaylistsState: StateFlow<List<PlaylistType>> = combine(
+        yourLocalPlaylist,
+        youTubePlaylist,
+        savedPlaylists,
+        youtubeLoggedIn
+    ) { local, youtube, saved, isLogged ->
+        val ytList = if (isLogged) youtube.data.orEmpty() else emptyList()
+        val listed = ytList.mapTo(HashSet()) { it.browseId.removePrefix("VL") }
+        val savedList = saved.filter { it.id.removePrefix("VL") !in listed }
+        local.data.orEmpty().withoutYouTubeTwins(ytList) + savedList + ytList
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _librarySearchQuery = MutableStateFlow("")
+    val librarySearchQuery: StateFlow<String> get() = _librarySearchQuery.asStateFlow()
+
+    fun setLibrarySearchQuery(query: String) {
+        _librarySearchQuery.value = query
+    }
+
+    val filteredSongs: StateFlow<List<Track>> = combine(
+        songs,
+        librarySearchQuery
+    ) { songsResource, query ->
+        val list = songsResource.data.orEmpty()
+        if (query.isBlank()) emptyList()
+        else list.filter { track ->
+            track.title.contains(query, ignoreCase = true) ||
+                    track.artists?.any { it.name.contains(query, ignoreCase = true) } == true ||
+                    track.album?.name?.contains(query, ignoreCase = true) == true
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val filteredPlaylists: StateFlow<List<PlaylistType>> = combine(
+        allPlaylistsState,
+        librarySearchQuery
+    ) { playlists, query ->
+        if (query.isBlank()) emptyList()
+        else playlists.filter { it.playlistTitle().contains(query, ignoreCase = true) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val filteredAlbums: StateFlow<List<PlaylistType>> = combine(
+        albums,
+        librarySearchQuery
+    ) { albumsResource, query ->
+        val list = albumsResource.data.orEmpty()
+        if (query.isBlank()) emptyList()
+        else list.filter { it.playlistTitle().contains(query, ignoreCase = true) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val filteredArtists: StateFlow<List<ArtistType>> = combine(
+        artists,
+        subscriptions,
+        librarySearchQuery
+    ) { artistsResource, subsResource, query ->
+        val combined = (artistsResource.data.orEmpty() + subsResource.data.orEmpty()).distinctBy {
+            when (it) {
+                is ArtistEntity -> it.channelId
+                is ArtistsResult -> it.browseId
+                else -> ""
+            }
+        }
+        if (query.isBlank()) emptyList()
+        else combined.filter { it.artistName().contains(query, ignoreCase = true) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val isLibraryLoading: StateFlow<Boolean> = combine(
+        songs,
+        albums,
+        artists,
+        yourLocalPlaylist
+    ) { s, a, ar, p ->
+        s is LocalResource.Loading || a is LocalResource.Loading || ar is LocalResource.Loading || p is LocalResource.Loading
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    fun loadAllLibraryData() {
+        viewModelScope.launch {
+            if (_songs.value.data == null) getSongs()
+            if (_albums.value.data == null) getAlbums()
+            if (_artists.value.data == null || _subscriptions.value.data == null) getArtists()
+            if (_yourLocalPlaylist.value.data == null) getLocalPlaylist()
+            getSavedPlaylists()
+            if (signedIn() && _youTubePlaylist.value.data == null) {
+                getYouTubePlaylist()
+            }
+            if (_downloadedPlaylist.value.data == null) getDownloadedPlaylist()
+            if (_favoritePodcasts.value.data == null) getFavoritePodcasts()
+        }
+    }
+
     init {
         viewModelScope.launch {
             dataStoreManager.getString("library_current_screen").first()?.let { chipType ->
@@ -328,14 +422,19 @@ class LibraryViewModel(
         _songs.value = LocalResource.Loading()
         songsContinuation = null
         viewModelScope.launch {
+            val localLiked = songRepository.getLikedSongs().first().map { it.toTrack() }
             if (!signedIn()) {
-                _songs.value = LocalResource.Success(songRepository.getLikedSongs().first().map { it.toTrack() })
+                _songs.value = LocalResource.Success(localLiked)
                 return@launch
             }
             val page = songRepository.getLibrarySongs(null)
             songsContinuation = page?.second
-            _songs.value = page?.let { LocalResource.Success(it.first.distinctBy { track -> track.videoId }) } ?: LocalResource.Error("")
-            if (page == null) reloadWhenOnline({ _songs.value is LocalResource.Error }) { getSongs() }
+            val ytSongs = page?.first.orEmpty()
+            val combined = (localLiked + ytSongs).distinctBy { it.videoId }
+            _songs.value = LocalResource.Success(combined)
+            if (page == null && combined.isEmpty()) {
+                reloadWhenOnline({ _songs.value is LocalResource.Error }) { getSongs() }
+            }
         }
     }
 
@@ -466,6 +565,22 @@ class LibraryViewModel(
             getRecentlyAdded()
         }
     }
+}
+
+fun PlaylistType.playlistTitle(): String = when (this) {
+    is LocalPlaylistEntity -> title
+    is PlaylistsResult -> title
+    is AlbumEntity -> title
+    is PlaylistEntity -> title
+    is PodcastsEntity -> title
+    is AlbumsResult -> title
+    else -> ""
+}
+
+fun ArtistType.artistName(): String = when (this) {
+    is ArtistEntity -> name
+    is ArtistsResult -> artist
+    else -> ""
 }
 
 // ponytail: a fixed gap between Sync's writes, not a rate limiter; enough to keep a few hundred

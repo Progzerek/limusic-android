@@ -92,10 +92,12 @@ import com.simohypers.limusic.ui.icon.Album
 import com.simohypers.limusic.ui.icon.PeopleAlt
 import com.simohypers.limusic.ui.icon.LibraryMusic
 import com.simohypers.limusic.ui.icon.LimusicIcons
+import com.simohypers.limusic.ui.icon.Search
 import com.simohypers.limusic.ui.icon.Sync
 import com.simohypers.limusic.ui.navigation.destination.home.ListenTogetherDestination
 import com.simohypers.limusic.ui.navigation.destination.home.NotificationDestination
 import com.simohypers.limusic.ui.navigation.destination.home.RecentlySongsDestination
+import com.simohypers.limusic.ui.navigation.destination.library.LibrarySearchDestination
 import com.simohypers.limusic.viewModel.LibraryViewModel
 import com.simohypers.limusic.viewModel.SharedViewModel
 import dev.chrisbanes.haze.HazeInput
@@ -474,6 +476,9 @@ fun LibraryScreen(
                         )
                     }
                 }
+            }
+            RippleIconButton(imageVector = LimusicIcons.Search, tint = MaterialTheme.colorScheme.onBackground) {
+                navController.navigate(LibrarySearchDestination)
             }
             RippleIconButton(imageVector = LimusicIcons.Add, tint = MaterialTheme.colorScheme.onBackground) {
                 showAddSheet = true

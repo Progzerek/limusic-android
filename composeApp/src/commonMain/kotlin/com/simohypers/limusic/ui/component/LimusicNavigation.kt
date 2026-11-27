@@ -63,7 +63,7 @@ fun LimusicNavigationBar(
     compact: Boolean = false,
     onReselect: (KClass<*>) -> Unit = {},
 ) {
-    val backStack by navController.currentBackStack.collectAsState()
+    val backStack by navController.0currentBackStack.collectAsState()
     val tabEntry = backStack.indexOfLast { limusicTabIndex(it.destination, tabs) >= 0 }
     val stackTab = backStack.getOrNull(tabEntry)?.destination?.let { limusicTabIndex(it, tabs) } ?: -1
     // Settings and the pages opened from it belong to no tab, so none is lit there.

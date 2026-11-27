@@ -10,9 +10,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.simohypers.limusic.domain.manager.DataStoreManager
 import com.simohypers.limusic.ui.navigation.destination.library.LibraryDynamicPlaylistDestination
+import com.simohypers.limusic.ui.navigation.destination.library.LibrarySearchDestination
 import com.simohypers.limusic.ui.navigation.destination.library.LikedSongsDestination
 import com.simohypers.limusic.ui.screen.library.LibraryDynamicPlaylistScreen
 import com.simohypers.limusic.ui.screen.library.LibraryDynamicPlaylistType
+import com.simohypers.limusic.ui.screen.library.LibrarySearchScreen
 import com.simohypers.limusic.ui.screen.other.PlaylistScreen
 import com.simohypers.limusic.viewModel.SharedViewModel
 import org.koin.compose.koinInject
@@ -22,6 +24,12 @@ fun NavGraphBuilder.libraryScreenGraph(
     innerPadding: PaddingValues,
     navController: NavController,
 ) {
+    composable<LibrarySearchDestination> {
+        LibrarySearchScreen(
+            innerPadding = innerPadding,
+            navController = navController,
+        )
+    }
     composable<LibraryDynamicPlaylistDestination> { entry ->
         val data = entry.toRoute<LibraryDynamicPlaylistDestination>()
         LibraryDynamicPlaylistScreen(
