@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import com.simohypers.limusic.extension.copy
 import com.simohypers.limusic.domain.data.entities.AlbumEntity
 import com.simohypers.limusic.domain.data.entities.ArtistEntity
 import com.simohypers.limusic.domain.data.entities.LocalPlaylistEntity
@@ -196,7 +197,7 @@ fun LibrarySearchScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = innerPadding,
+                    contentPadding = innerPadding.copy(top = 0.dp),
                 ) {
                     if (showSongs && filteredSongs.isNotEmpty()) {
                         if (selectedFilter == LibrarySearchFilter.ALL) {
@@ -204,7 +205,7 @@ fun LibrarySearchScreen(
                                 LibrarySectionHeader(
                                     icon = LimusicIcons.LibraryMusic,
                                     title = stringResource(Res.string.songs),
-                                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
                                     onMore = { selectedFilter = LibrarySearchFilter.SONGS },
                                 )
                             }
