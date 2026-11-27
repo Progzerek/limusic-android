@@ -11,6 +11,7 @@ import com.simohypers.limusic.domain.mediaservice.handler.PlayerEvent
 import com.simohypers.limusic.domain.mediaservice.handler.PlaylistType
 import com.simohypers.limusic.domain.mediaservice.handler.QueueData
 import com.simohypers.limusic.domain.mediaservice.handler.RepeatState
+import com.simohypers.limusic.domain.mediaservice.handler.ShuffleMode
 import com.simohypers.limusic.domain.mediaservice.handler.SimpleMediaState
 import com.simohypers.limusic.logger.Logger
 import kotlinx.coroutines.CoroutineScope
@@ -213,7 +214,7 @@ class DeviceLinkBridge(
         combine(
             handler.queueData,
             handler.currentSongIndex,
-            handler.controlState.map { it.isShuffle to it.repeatState }.distinctUntilChanged(),
+            handler.controlState.map { Triple(it.isShuffle, it.isDynamicShuffle, it.repeatState) }.distinctUntilChanged(),
             dataStore.endlessQueue.distinctUntilChanged(),
             session.state.map { it.isPlayer && it.connection == LinkConnection.CONNECTED }.distinctUntilChanged(),
         ) { _, _, _, _, player -> player }
@@ -236,10 +237,11 @@ class DeviceLinkBridge(
         val end = (current + 1 + STATUS_UPCOMING).coerceAtMost(items.size)
         val control = handler.controlState.value
         return LinkStatus(
-            items = items.subList(start, end).map { LinkItem(it.toTrackInfo(), it.queued, it.queuedEnd, it.queuedFrom, it.autoplay) },
+            items = items.subList(start, end).map { LinkItem(it.toTrackInfo(), it.queued, it.queuedEnd, it.queuedFrom, it.autoplay, it.suggested) },
             offset = start,
             current = current - start,
             shuffle = control.isShuffle,
+            dynamic = control.isDynamicShuffle,
             repeat =
                 when (control.repeatState) {
                     RepeatState.None -> "off"
@@ -287,7 +289,12 @@ class DeviceLinkBridge(
             is RemoteAction.PlayNext -> handler.playNext(action.tracks.map { it.toTrack() }, action.from)
             is RemoteAction.AddToQueue -> handler.addToQueue(action.tracks.map { it.toTrack() }, action.from)
             RemoteAction.ClearQueued -> handler.clearQueued()
-            is RemoteAction.SetShuffle -> if (handler.controlState.value.isShuffle != action.on) handler.onPlayerEvent(PlayerEvent.Shuffle)
+            // The computer's button has two states: on leaves dynamic as it is, off ends both.
+            is RemoteAction.SetShuffle ->
+                when {
+                    !action.on -> handler.setShuffle(ShuffleMode.Off)
+                    !handler.controlState.value.isShuffle -> handler.setShuffle(ShuffleMode.On)
+                }
             is RemoteAction.SetRepeat -> {
                 val wanted =
                     when (action.mode) {

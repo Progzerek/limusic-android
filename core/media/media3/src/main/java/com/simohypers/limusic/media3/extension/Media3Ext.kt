@@ -189,15 +189,15 @@ fun GenericCommandButton.toCommandButton(context: Context): CommandButton =
         is GenericCommandButton.Shuffle -> {
             CommandButton
                 .Builder(
-                    if (this.isShuffled) {
-                        CommandButton.ICON_SHUFFLE_ON
-                    } else {
-                        CommandButton.ICON_SHUFFLE_OFF
+                    when {
+                        this.isDynamic -> CommandButton.ICON_SHUFFLE_STAR
+                        this.isShuffled -> CommandButton.ICON_SHUFFLE_ON
+                        else -> CommandButton.ICON_SHUFFLE_OFF
                     },
                     // Resource fallback for hosts that don't map the media3 icon
                     // constants (AA templated surface renders a gear otherwise)
-                ).setCustomIconResId(R.drawable.baseline_shuffle_24)
-                .setDisplayName(context.getString(R.string.shuffle))
+                ).setCustomIconResId(if (this.isDynamic) R.drawable.shuffle_dynamic_24 else R.drawable.baseline_shuffle_24)
+                .setDisplayName(context.getString(if (this.isDynamic) R.string.dynamic_shuffle else R.string.shuffle))
                 .setSessionCommand(
                     SessionCommand(
                         MEDIA_CUSTOM_COMMAND.SHUFFLE,

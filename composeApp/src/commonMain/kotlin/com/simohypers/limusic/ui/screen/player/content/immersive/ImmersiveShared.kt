@@ -87,6 +87,7 @@ import com.simohypers.limusic.ui.component.ExplicitBadge
 import com.simohypers.limusic.ui.component.heartBurst
 import com.simohypers.limusic.ui.component.rememberHeartBurstState
 import com.simohypers.limusic.ui.component.rememberHolderPainter
+import com.simohypers.limusic.ui.component.TitleWithSuggestedMark
 import com.simohypers.limusic.ui.icon.AddCircleOutline
 import com.simohypers.limusic.ui.icon.CheckCircle
 import com.simohypers.limusic.ui.icon.FastForward
@@ -100,7 +101,7 @@ import com.simohypers.limusic.ui.icon.PlayArrow
 import com.simohypers.limusic.ui.icon.QueueMusic
 import com.simohypers.limusic.ui.icon.Repeat
 import com.simohypers.limusic.ui.icon.RepeatOne
-import com.simohypers.limusic.ui.icon.Shuffle
+import com.simohypers.limusic.ui.icon.shuffleIcon
 import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.icon.Favorite
 import com.simohypers.limusic.ui.icon.FavoriteBorder
@@ -409,13 +410,15 @@ internal fun ImmersiveCompactHeader(
         Column(modifier = Modifier.weight(1f)) {
             // Ellipsis, not marquee: a marquee in this narrow header scrolls constantly and
             // snapshots as garbage ("Vill Be Okay … Eve" in the first device screenshots).
-            Text(
-                text = state.screenData.nowPlayingTitle,
-                style = typography.compactTitle,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            TitleWithSuggestedMark(state.suggested, Modifier.fillMaxWidth(), size = 12.dp, tint = typography.compactTitle.color) { weight ->
+                Text(
+                    text = state.screenData.nowPlayingTitle,
+                    style = typography.compactTitle,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = weight,
+                )
+            }
             Spacer(modifier = Modifier.height(2.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (state.screenData.isExplicit) {
@@ -665,7 +668,7 @@ internal fun ImmersiveTransportRow(
     ) {
         if (showShuffleAndRepeat) {
             ImmersiveGlyphButton(
-                icon = LimusicIcons.Shuffle,
+                icon = controllerState.shuffleIcon,
                 onClick = { onUIEvent(UIEvent.Shuffle) },
                 size = 40.dp,
                 tint = Color.White.copy(alpha = if (controllerState.isShuffle) 1f else 0.4f),

@@ -704,7 +704,8 @@ fun NowPlayingScreenContent(
     if (screenDataState.lyricsData != null && controllerState.isPlaying) {
         KeepScreenOn()
     }
-    val twin = artworkQueue.getOrNull(currentOrderIndex)?.takeIf { it.videoId == nowPlayingVideoId }?.counterpart
+    val playingRow = artworkQueue.getOrNull(currentOrderIndex)?.takeIf { it.videoId == nowPlayingVideoId }
+    val twin = playingRow?.counterpart
     // ponytail: one height for all three styles, scaled by the font size because their controls
     // grow with it and the cover takes the cut. Raise it if a style still overflows.
     val isShort = getScreenSizeInfo().hDP < SHORT_WINDOW_DP * LocalDensity.current.fontScale
@@ -742,6 +743,7 @@ fun NowPlayingScreenContent(
             // video with no other version gets it too, to show or hide its picture.
             canSwitchVersion = videosOn && (screenDataState.isVideo || twin != null),
             isShort = isShort,
+            suggested = playingRow?.suggested == true,
         )
     val actions =
         NowPlayingContentActions(

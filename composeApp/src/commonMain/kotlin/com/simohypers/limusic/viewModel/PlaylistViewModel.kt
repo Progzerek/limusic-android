@@ -18,6 +18,7 @@ import com.simohypers.limusic.domain.manager.DataStoreManager
 import com.simohypers.limusic.domain.mediaservice.handler.DownloadHandler
 import com.simohypers.limusic.domain.mediaservice.handler.PlaylistType
 import com.simohypers.limusic.domain.mediaservice.handler.QueueData
+import com.simohypers.limusic.domain.mediaservice.handler.ShuffleMode
 import com.simohypers.limusic.domain.repository.LocalPlaylistRepository
 import com.simohypers.limusic.domain.repository.PlaylistRepository
 import com.simohypers.limusic.domain.repository.SongRepository
@@ -479,6 +480,34 @@ class PlaylistViewModel(
         }
     }
 
+    /**
+     * The playlist's own tracks in random order, like desktop; the rest of a long one is walked in
+     * the background and mixed in as it arrives. [dynamic] is the shuffle menu's pick, null when the
+     * page has no menu and sticky shuffle decides.
+     */
+    private fun shufflePlay(
+        data: PlaylistState,
+        dynamic: Boolean?,
+    ) {
+        val loadedList = tracks.value
+        if (loadedList.isEmpty()) {
+            makeToast(getString(Res.string.playlist_is_empty))
+            return
+        }
+        setQueueData(
+            QueueData.Data(
+                listTracks = loadedList.toCollection(arrayListOf<Track>()),
+                playlistId = data.id,
+                playlistName = data.title,
+                playlistType = PlaylistType.PLAYLIST,
+                continuation = continuation.value,
+                shuffle = true,
+                dynamic = dynamic,
+            ),
+        )
+        loadMediaItem(loadedList.first(), Config.PLAYLIST_CLICK, null)
+    }
+
     fun onUIEvent(event: PlaylistUIEvent) {
         val data = uiState.value.data ?: return
         when (event) {
@@ -530,26 +559,9 @@ class PlaylistViewModel(
                 }
             }
 
-            PlaylistUIEvent.Shuffle -> {
-                // The playlist's own tracks in random order, like desktop; the rest of a long one
-                // is walked in the background and mixed in as it arrives.
-                val loadedList = tracks.value
-                if (loadedList.isEmpty()) {
-                    makeToast(getString(Res.string.playlist_is_empty))
-                    return
-                }
-                setQueueData(
-                    QueueData.Data(
-                        listTracks = loadedList.toCollection(arrayListOf<Track>()),
-                        playlistId = data.id,
-                        playlistName = data.title,
-                        playlistType = PlaylistType.PLAYLIST,
-                        continuation = continuation.value,
-                        shuffle = true,
-                    ),
-                )
-                loadMediaItem(loadedList.first(), Config.PLAYLIST_CLICK, null)
-            }
+            PlaylistUIEvent.Shuffle -> shufflePlay(data, dynamic = null)
+
+            is PlaylistUIEvent.ShuffleIn -> shuffleFrom(event.mode, data.id) { dynamic -> shufflePlay(data, dynamic) }
 
             PlaylistUIEvent.StartRadio -> {
                 // Without one from the page, the same radio Limusic desktop starts for a playlist.
@@ -815,6 +827,11 @@ sealed class PlaylistUIEvent {
     data object PlayAll : PlaylistUIEvent()
 
     data object Shuffle : PlaylistUIEvent()
+
+    /** The header's shuffle menu: switch the playing page's mode in place, or start it in [mode]. */
+    data class ShuffleIn(
+        val mode: ShuffleMode,
+    ) : PlaylistUIEvent()
 
     data object StartRadio : PlaylistUIEvent()
 

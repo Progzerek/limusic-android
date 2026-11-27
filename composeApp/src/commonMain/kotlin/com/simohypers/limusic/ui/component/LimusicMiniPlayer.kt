@@ -301,6 +301,7 @@ fun LimusicMiniPlayer(
                         remoteDevice = remoteDevice,
                         isPlaying = control.isPlaying,
                         waitingForNetwork = waitingForNetwork,
+                        suggested = queue.getOrNull(currentOrderIndex)?.takeIf { it.videoId == nowPlayingVideoId }?.suggested == true,
                     )
                 } else {
                     val track = queue.getOrNull(page)
@@ -308,7 +309,7 @@ fun LimusicMiniPlayer(
                     // once it starts playing. toSongEntity calls last() on the thumbnails, hence the guard.
                     val neighbour =
                         remember(track) { track?.let { it.copy(thumbnails = it.thumbnails?.takeIf { t -> t.isNotEmpty() }).toSongEntity() } }
-                    MiniPlayerTrack(song = neighbour, remoteDevice = null, isPlaying = false, waitingForNetwork = false)
+                    MiniPlayerTrack(song = neighbour, remoteDevice = null, isPlaying = false, waitingForNetwork = false, suggested = track?.suggested == true)
                 }
             }
             IconButton(onClick = { sharedViewModel.onUIEvent(UIEvent.ToggleLike) }) {
@@ -369,6 +370,8 @@ private fun MiniPlayerTrack(
     remoteDevice: LinkedDevice?,
     isPlaying: Boolean,
     waitingForNetwork: Boolean,
+    // Dynamic shuffle lined this track up.
+    suggested: Boolean,
 ) {
     Row(
         Modifier
@@ -396,12 +399,15 @@ private fun MiniPlayerTrack(
         )
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                text = song?.title.orEmpty(),
-                style = typo().titleSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            TitleWithSuggestedMark(suggested, size = 12.dp) { weight ->
+                Text(
+                    text = song?.title.orEmpty(),
+                    style = typo().titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = weight,
+                )
+            }
             if (remoteDevice != null) {
                 PlayingOnLabel(remoteDevice, playing = isPlaying, style = typo().bodySmall)
             } else if (waitingForNetwork) {

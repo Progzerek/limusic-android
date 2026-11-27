@@ -4,6 +4,7 @@ import com.simohypers.limusic.common.LOCAL_PLAYLIST_ID
 import com.simohypers.limusic.domain.data.model.browse.album.Track
 import com.simohypers.limusic.domain.data.model.browse.album.TwinSegment
 import com.simohypers.limusic.domain.mediaservice.handler.RepeatState
+import com.simohypers.limusic.domain.mediaservice.handler.ShuffleMode
 import com.simohypers.limusic.domain.utils.MusicVideoType
 
 /**
@@ -21,6 +22,21 @@ class QueueState {
 
     /** Pre-shuffle order. Non-null exactly while shuffle is on. */
     var shuffleOrig: MutableList<Track>? = null
+
+    /**
+     * Dynamic shuffle: shuffle, plus suggestions from the playlist's radio lined up between its
+     * tracks ([interleaveSuggestions]). Only ever true while [shuffleOrig] is non-null.
+     */
+    var dynamic = false
+
+    /** The queue ([epoch]) a suggestion fetch is out for, so a track start doesn't send a second. */
+    var suggestInflight: Long? = null
+
+    /**
+     * The anchor whose radio page had nothing new for this queue ([epoch] to video id). Asking again
+     * from the same anchor returns the same page, so the next fetch waits for a new one.
+     */
+    var suggestDry: Pair<Long, String>? = null
 
     /**
      * Autoplay's seed: `RDAMPL<id>` when the queue came from a playlist or album, null for a single
@@ -51,6 +67,14 @@ class QueueState {
 
     val shuffled get() = shuffleOrig != null
 
+    val shuffleMode
+        get() =
+            when {
+                shuffleOrig == null -> ShuffleMode.Off
+                dynamic -> ShuffleMode.Dynamic
+                else -> ShuffleMode.On
+            }
+
     /** Move the play pointer within this queue. Past the head, Previous has a track of its own. */
     fun seekTo(index: Int) {
         current = index
@@ -58,8 +82,9 @@ class QueueState {
     }
 
     /**
-     * Set this queue aside so Previous can come back to it. Takes [items] and [shuffleOrig] rather
-     * than copying them: only a caller that replaces both right after may call this.
+     * Set this queue aside so Previous can come back to it. Takes [items], [shuffleOrig] and
+     * [dynamic] rather than copying them: only a caller that replaces them right after may call
+     * this, and anything that reads them (sticky shuffle) reads them first.
      */
     fun keepContext(positionMs: Long) {
         if (items.isEmpty()) return
@@ -68,6 +93,7 @@ class QueueState {
                 items = items,
                 current = current.coerceAtMost(items.lastIndex),
                 shuffleOrig = shuffleOrig,
+                dynamic = dynamic,
                 radioSeed = radioSeed,
                 sourceName = sourceName,
                 sourceId = sourceId,
@@ -76,6 +102,7 @@ class QueueState {
             )
         items = mutableListOf()
         shuffleOrig = null
+        dynamic = false
         radioSeed = null
         sourceName = null
         sourceId = null
@@ -87,6 +114,7 @@ class QueueState {
         epoch++
         current = p.current
         shuffleOrig = p.shuffleOrig
+        dynamic = p.dynamic
         radioSeed = p.radioSeed
         sourceName = p.sourceName
         sourceId = p.sourceId
@@ -105,6 +133,7 @@ class PrevContext(
     val items: MutableList<Track>,
     val current: Int,
     val shuffleOrig: MutableList<Track>?,
+    val dynamic: Boolean,
     val radioSeed: String?,
     val sourceName: String?,
     val sourceId: String?,
@@ -124,8 +153,8 @@ const val KEEP_PLAYED = 200
 const val AUTOPLAY_BATCH = 20
 
 fun Track.unmarked(): Track =
-    if (queued || queuedEnd || queuedFrom != null || autoplay) {
-        copy(queued = false, queuedEnd = false, queuedFrom = null, autoplay = false)
+    if (queued || queuedEnd || queuedFrom != null || autoplay || suggested) {
+        copy(queued = false, queuedEnd = false, queuedFrom = null, autoplay = false, suggested = false)
     } else {
         this
     }
@@ -264,7 +293,9 @@ fun QueueState.learnTwin(row: Track): Boolean {
 /**
  * Play a finite list (a playlist, an album). [start] is the clicked track; null means the header's
  * Play, which starts anywhere while shuffled. Carried manual adds keep their meaning: Play next
- * right after the clicked track, Add to queue behind the new list.
+ * right after the clicked track, Add to queue behind the new list. [dynamic] is the page shuffle
+ * menu's pick, which implies shuffle either way; null leaves it to sticky shuffle. The suggestions
+ * themselves come with the handler's first top-up.
  */
 fun QueueState.startTracks(
     tracks: List<Track>,
@@ -275,9 +306,13 @@ fun QueueState.startTracks(
     sticky: Boolean,
     whole: Boolean,
     positionMs: Long,
+    dynamic: Boolean? = null,
 ) {
     if (tracks.isEmpty()) return
-    val keepShuffled = shuffle || (sticky && shuffled)
+    val keepShuffled = shuffle || dynamic != null || (sticky && shuffled)
+    // Asked for, or sticking under the same rule as shuffle. Checked against the new queue below:
+    // it needs a radio to draw on.
+    val keepDynamic = dynamic ?: (sticky && this.dynamic)
     val first =
         when {
             start != null -> start.coerceIn(0, tracks.lastIndex)
@@ -300,6 +335,7 @@ fun QueueState.startTracks(
     } else {
         shuffleOrig = null
     }
+    this.dynamic = keepShuffled && keepDynamic && dynamicAllowed()
     val (next, added) = carried.partition { it.queued }
     items.addAll(current + 1, next)
     items.addAll(added)
@@ -325,6 +361,8 @@ fun QueueState.spliceRadio(
     sourceName = title
     sourceId = null
     radio = true
+    // A radio is all suggestions already ([dynamicAllowed]).
+    dynamic = false
     if (shuffled) {
         shuffleOrig = items.toMutableList()
         // A radio's adds already sit right behind the playing track, pinned either way.
@@ -345,7 +383,8 @@ fun QueueState.insertQueued(
     whole: Boolean,
 ) {
     if (tracks.isEmpty()) return
-    val adds = tracks.mapTo(mutableListOf()) { it.copy(queued = next, queuedEnd = !next, queuedFrom = from, autoplay = false) }
+    // Queued by hand, so the user's: switching Autoplay off or dynamic shuffle back leaves it be.
+    val adds = tracks.mapTo(mutableListOf()) { it.copy(queued = next, queuedEnd = !next, queuedFrom = from, autoplay = false, suggested = false) }
     val ids = adds.mapTo(HashSet()) { it.videoId }
     var removed = dedupe && dropDuplicates(ids)
     val before = items.size
@@ -399,22 +438,68 @@ fun QueueState.move(
 }
 
 /**
- * Shuffle on: snapshot, then shuffle what is upcoming. Off: restore the snapshot without offering
- * again what the shuffle already played.
+ * Dynamic shuffle draws on the radio of the playlist or album that's playing. A radio, a mix or a
+ * queue started from one song is all suggestions already, and a playlist on the phone has no radio
+ * to draw on, so those keep the two-state button. So does a podcast: its "radio" is no such thing.
  */
-fun QueueState.toggleShuffle(whole: Boolean) {
-    if (items.isEmpty()) return
-    val orig = shuffleOrig
-    if (orig != null) {
-        shuffleOrig = null
-        val heard = items.subList(0, current + 1).mapTo(HashSet()) { it.videoId }
-        val (restored, idx) = unshuffled(orig, heard, items[current].videoId, current)
-        items = restored
-        current = idx
-    } else {
-        shuffleOrig = items.toMutableList()
-        shuffleUpcoming(items, current, whole)
+fun QueueState.dynamicAllowed(): Boolean = !radio && radioSeed != null && dynamicShuffleOffered(sourceId)
+
+/** A page started from [sourceId] can play in dynamic shuffle: a YouTube playlist or album audio playlist, not a mix. */
+fun dynamicShuffleOffered(sourceId: String?): Boolean = sourceId != null && radioSeedFor(sourceId) != null && !isMix(sourceId) && !sourceId.startsWith("MPSP")
+
+/** The shuffle button: off, shuffle, dynamic shuffle, off again. Dynamic only where [dynamicAllowed]. */
+fun QueueState.nextShuffleMode(): ShuffleMode =
+    when (shuffleMode) {
+        ShuffleMode.Off -> ShuffleMode.On
+        ShuffleMode.On -> if (dynamicAllowed()) ShuffleMode.Dynamic else ShuffleMode.Off
+        ShuffleMode.Dynamic -> ShuffleMode.Off
     }
+
+/** One press of the shuffle button ([nextShuffleMode]). */
+fun QueueState.toggleShuffle(whole: Boolean) = setShuffle(nextShuffleMode(), whole)
+
+/**
+ * Move shuffle to [next]. On snapshots the order and shuffles what is upcoming; on to dynamic only
+ * marks the queue, the suggestions arrive with their fetch. Back to plain shuffle drops the upcoming
+ * suggestions. Off restores the snapshot without offering again what the shuffle already played;
+ * the snapshot never holds a suggestion, so they all go with it. Returns whether anything changed.
+ */
+fun QueueState.setShuffle(
+    next: ShuffleMode,
+    whole: Boolean,
+): Boolean {
+    val cur = shuffleMode
+    if (cur == next || items.isEmpty()) return false
+    when {
+        cur == ShuffleMode.Off -> {
+            shuffleOrig = items.toMutableList()
+            shuffleUpcoming(items, current, whole)
+        }
+        next == ShuffleMode.Off -> {
+            val orig = shuffleOrig ?: mutableListOf()
+            shuffleOrig = null
+            val playing = items[current]
+            // What's playing stays playing. A suggestion isn't in the snapshot, and without this the
+            // queue would point at whichever row sits at its index there while the player carries
+            // on with the suggestion. It goes in behind the last of the playlist's own tracks to
+            // play, so the playlist carries on from there.
+            if (orig.none { it.videoId == playing.videoId }) {
+                val before = items.subList(0, current).lastOrNull { !it.suggested }
+                val at = before?.let { b -> orig.indexOfFirst { it.videoId == b.videoId } }?.takeIf { it >= 0 }?.plus(1) ?: 0
+                orig.add(at, playing)
+            }
+            val heard = items.subList(0, current + 1).mapTo(HashSet()) { it.videoId }
+            val (restored, idx) = unshuffled(orig, heard, playing.videoId, current)
+            items = restored
+            current = idx
+        }
+        cur == ShuffleMode.Dynamic -> retainUpcoming { !it.suggested }
+        // On to dynamic: nothing moves until the suggestions arrive.
+    }
+    dynamic = next == ShuffleMode.Dynamic
+    // Turned on afresh: the queue may have changed since an anchor came back with nothing new.
+    if (dynamic) suggestDry = null
+    return true
 }
 
 /**
@@ -435,6 +520,11 @@ fun QueueState.absorbAutoplay(
  * background. The playing playlist's pages go in front of the user's adds at the tail; an added
  * one's go right behind its own block. While shuffled, a page of the playing list is mixed through
  * the unplayed tail, behind the next track, which the player has already started loading.
+ *
+ * Dynamic shuffle can have suggested a song from a page the walk hadn't reached yet. Upcoming, that
+ * suggestion goes and the page's row takes over. Heard, playing or next, the suggestion becomes the
+ * page's row in place and the page's copy (one: a playlist can hold a song twice) stays out, so the
+ * song isn't queued twice. The snapshot keeps it: shuffle off restores the playlist whole.
  */
 fun QueueState.appendPage(
     page: List<Track>,
@@ -443,8 +533,19 @@ fun QueueState.appendPage(
 ) {
     shuffleOrig?.addAll(page)
     if (playing) {
-        items.addAll(contextEnd(), page)
-        if (shuffled) shuffleUpcoming(items, (current + 1).coerceAtMost(items.lastIndex), whole)
+        val pivot = (current + 1).coerceAtMost(items.lastIndex)
+        val rest = page.toMutableList()
+        if (items.any { it.suggested }) {
+            val ids = page.mapTo(HashSet()) { it.videoId }
+            items = items.filterIndexed { i, t -> i <= pivot || !t.suggested || t.videoId !in ids }.toMutableList()
+            for (i in 0..pivot.coerceAtMost(items.lastIndex)) {
+                if (!items[i].suggested) continue
+                val at = rest.indexOfFirst { it.videoId == items[i].videoId }
+                if (at >= 0) items[i] = rest.removeAt(at)
+            }
+        }
+        items.addAll(contextEnd(), rest)
+        if (shuffled) shuffleUpcoming(items, pivot, whole)
     } else {
         val from = page.firstOrNull()?.queuedFrom
         val last = items.indexOfLast { it.queuedEnd && it.queuedFrom == from }
@@ -557,7 +658,7 @@ fun mergeRadio(
     for (track in fresh) {
         if (added >= cap) break
         if (!existing.add(track.videoId)) continue
-        items.add(track.copy(queued = false, queuedEnd = false, queuedFrom = null, autoplay = true))
+        items.add(track.unmarked().copy(autoplay = true))
         added++
     }
     return added
@@ -618,7 +719,8 @@ fun upcomingQueued(
  * Shuffle only what is upcoming. The leading Play next run keeps its place (an album queued that
  * way is shuffled within itself), then the playlist, then the Add to queue tracks in their order,
  * then autoplay, each group shuffled within itself. With [whole], the playlist and the adds are one
- * mix.
+ * mix. Dynamic shuffle's suggestions come out first and are lined up again behind the new order
+ * ([interleaveSuggestions]), so they stay spread through it instead of clumping.
  */
 fun shuffleUpcoming(
     items: MutableList<Track>,
@@ -626,22 +728,115 @@ fun shuffleUpcoming(
     whole: Boolean,
 ) {
     val first = (current + 1).coerceAtMost(items.size)
+    val upcoming = items.subList(first, items.size)
+    val lifted = upcoming.filter { it.suggested }
+    if (lifted.isNotEmpty()) upcoming.removeAll { it.suggested }
     var start = first
     while (start < items.size && (items[start].queued || (!whole && items[start].queuedEnd))) start++
     shuffleAddedRuns(items.subList(first, start))
-    if (start >= items.size) return
-    val rest = items.subList(start, items.size)
-    if (whole) {
-        rest.shuffle()
-        rest.sortBy { it.autoplay }
-    } else {
-        rest.sortWith(compareBy<Track>({ it.autoplay }, { it.queuedEnd }))
-        val playlist = rest.takeWhile { !it.autoplay && !it.queuedEnd }.size
-        val added = playlist + rest.drop(playlist).takeWhile { !it.autoplay }.size
-        rest.subList(0, playlist).shuffle()
-        shuffleAddedRuns(rest.subList(playlist, added))
-        rest.subList(added, rest.size).shuffle()
+    if (start < items.size) {
+        val rest = items.subList(start, items.size)
+        if (whole) {
+            rest.shuffle()
+            rest.sortBy { it.autoplay }
+        } else {
+            rest.sortWith(compareBy<Track>({ it.autoplay }, { it.queuedEnd }))
+            val playlist = rest.takeWhile { !it.autoplay && !it.queuedEnd }.size
+            val added = playlist + rest.drop(playlist).takeWhile { !it.autoplay }.size
+            rest.subList(0, playlist).shuffle()
+            shuffleAddedRuns(rest.subList(playlist, added))
+            rest.subList(added, rest.size).shuffle()
+        }
     }
+    interleaveSuggestions(items, current, lifted, whole)
+}
+
+/** Dynamic shuffle's spacing: this many of the playlist's own tracks, then a suggestion. */
+const val DYNAMIC_EVERY = 2
+
+/** Dynamic shuffle asks for more suggestions once this few are left ahead. */
+const val DYNAMIC_AHEAD = 3
+
+/**
+ * A row a suggestion may follow: one of the playlist's own tracks. Not a Play next row, and not an
+ * Add to queue row either, unless the whole queue is shuffled as one mix.
+ */
+fun takesSuggestion(
+    track: Track,
+    whole: Boolean,
+): Boolean = !track.suggested && !track.autoplay && !track.queued && (whole || !track.queuedEnd)
+
+/**
+ * Where suggestions go, as indices into [items] before any goes in: one after every [DYNAMIC_EVERY]
+ * playlist tracks, carrying on after the last suggestion already there so nothing in place moves.
+ * Only past [pivot] (the track after the playing one, which the player is already loading), and not
+ * into autoplay. The count runs back from there to the last suggestion, so the tracks already heard
+ * count: the playing one is the first of every three, not a free one before the count. A count that
+ * comes due inside a Play next block waits for it to end: a suggestion only follows a playlist track.
+ */
+fun suggestionSlots(
+    items: List<Track>,
+    pivot: Int,
+    whole: Boolean,
+): List<Int> {
+    val start = (pivot + 1).coerceIn(0, items.size)
+    var at = items.subList(start, items.size).indexOfLast { it.suggested }.let { if (it < 0) start else start + it + 1 }
+    var run = items.subList(0, at).asReversed().takeWhile { !it.suggested }.count { takesSuggestion(it, whole) }
+    val slots = mutableListOf<Int>()
+    while (true) {
+        if (run >= DYNAMIC_EVERY && at > 0 && takesSuggestion(items[at - 1], whole)) {
+            slots += at
+            run = 0
+        }
+        if (at >= items.size || items[at].autoplay) return slots
+        if (takesSuggestion(items[at], whole)) run++
+        at++
+    }
+}
+
+/** Line [fresh] up in [suggestionSlots], marked. What doesn't fit is dropped. Returns how many went in. */
+fun interleaveSuggestions(
+    items: MutableList<Track>,
+    pivot: Int,
+    fresh: List<Track>,
+    whole: Boolean,
+): Int {
+    val placed = suggestionSlots(items, pivot, whole).zip(fresh)
+    // Back to front, so each index is still the one it was computed against.
+    for ((at, track) in placed.asReversed()) items.add(at, track.unmarked().copy(suggested = true))
+    return placed.size
+}
+
+/**
+ * The track dynamic shuffle's next radio page should be anchored on, when it wants one: the playing
+ * track. Null while more than [DYNAMIC_AHEAD] suggestions are lined up, or when there's nowhere left
+ * to put another ([suggestionSlots]).
+ */
+fun QueueState.suggestionAnchor(whole: Boolean): String? {
+    if (!dynamic) return null
+    val playing = items.getOrNull(current) ?: return null
+    val ahead = items.subList(current + 1, items.size).takeWhile { !it.autoplay }
+    if (ahead.count { it.suggested } > DYNAMIC_AHEAD) return null
+    if (suggestionSlots(items, current + 1, whole).isEmpty()) return null
+    return playing.videoId
+}
+
+/**
+ * A suggestion page for [anchor] arrived. The playlist's radio is mostly the playlist: what the queue
+ * holds goes, and so do the pages a background walk hasn't reached in [QueueState.items] yet but has
+ * in the snapshot. The rest is lined up behind the next track. An anchor whose page had nothing new
+ * is marked dry; one with nowhere to put it isn't, since a page walked in later makes room. Returns
+ * how many went in.
+ */
+fun QueueState.absorbSuggestions(
+    fresh: List<Track>,
+    anchor: String,
+    whole: Boolean,
+): Int {
+    val have = (items + shuffleOrig.orEmpty()).flatMapTo(HashSet()) { listOfNotNull(it.videoId, it.counterpart?.videoId) }
+    val left = fresh.filter { have.add(it.videoId) }
+    if (left.isEmpty()) suggestDry = epoch to anchor
+    return interleaveSuggestions(items, current + 1, left, whole)
 }
 
 /** Inside a run of manual adds, shuffle each block that came from one album or playlist. */

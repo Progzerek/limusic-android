@@ -444,6 +444,10 @@
     <string name="to_download_folder">" to Download folder"</string>
     <string name="download_speed">Download speed:  %1$s </string>
     <string name="shuffle">Shuffle</string>
+    <string name="shuffle_hint">These songs in random order</string>
+    <string name="dynamic_shuffle">Dynamic shuffle</string>
+    <string name="dynamic_shuffle_hint">Mixed with songs you might like</string>
+    <string name="suggested_by_dynamic_shuffle">Suggested by dynamic shuffle</string>
     <string name="other_version">Other versions</string>
     <string name="radio_not_available">Radio Endpoint is not available</string>
     <string name="no_results_found">No results found</string>

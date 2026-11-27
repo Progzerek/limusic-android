@@ -8,9 +8,12 @@ import androidx.lifecycle.viewModelScope
 import com.simohypers.limusic.common.Config
 import com.simohypers.limusic.domain.data.model.browse.album.Track
 import com.simohypers.limusic.domain.data.model.streams.YouTubeWatchEndpoint
+import com.simohypers.limusic.domain.mediaservice.handler.ControlState
 import com.simohypers.limusic.domain.mediaservice.handler.MediaPlayerHandler
 import com.simohypers.limusic.domain.mediaservice.handler.PlaylistType
 import com.simohypers.limusic.domain.mediaservice.handler.QueueData
+import com.simohypers.limusic.domain.mediaservice.handler.ShuffleMode
+import kotlinx.coroutines.flow.distinctUntilChanged
 import com.simohypers.limusic.domain.repository.SongRepository
 import com.simohypers.limusic.domain.utils.Resource
 import com.simohypers.limusic.domain.utils.isRadioQueueId
@@ -173,6 +176,50 @@ abstract class BaseViewModel :
                     _nowPlayingVideoId.value = ""
                 }
             }
+        }
+    }
+
+    /**
+     * The shuffle mode the queue plays [sourceId] in while it's the one playing (started from it,
+     * and autoplay hasn't moved on past its end), or null when it isn't: a page's Shuffle lights up
+     * and ticks its menu from this.
+     */
+    fun shuffleModeFor(sourceId: String?): Flow<ShuffleMode?> =
+        combine(mediaPlayerHandler.queueData, mediaPlayerHandler.currentSongIndex, mediaPlayerHandler.controlState) { queue, index, control ->
+            pageShuffleMode(queue, index, control, sourceId)
+        }.distinctUntilChanged()
+
+    /**
+     * A playlist or album page's shuffle menu pick. While the queue plays that page the mode changes
+     * in place and the song carries on (the mode it's already in does nothing); otherwise [start]
+     * starts the page in it, given whether that's dynamic.
+     */
+    protected fun shuffleFrom(
+        mode: ShuffleMode,
+        sourceId: String?,
+        start: (dynamic: Boolean) -> Unit,
+    ) {
+        val current = pageShuffleMode(mediaPlayerHandler.queueData.value, mediaPlayerHandler.currentSongIndex.value, mediaPlayerHandler.controlState.value, sourceId)
+        when {
+            current == mode -> Unit
+            current != null -> mediaPlayerHandler.setShuffle(mode)
+            else -> start(mode == ShuffleMode.Dynamic)
+        }
+    }
+
+    private fun pageShuffleMode(
+        queue: QueueData?,
+        index: Int,
+        control: ControlState,
+        sourceId: String?,
+    ): ShuffleMode? {
+        val data = queue?.data ?: return null
+        val row = data.listTracks.getOrNull(index)
+        return when {
+            sourceId == null || row == null || row.autoplay || data.playlistId != sourceId -> null
+            !control.isShuffle -> ShuffleMode.Off
+            control.isDynamicShuffle -> ShuffleMode.Dynamic
+            else -> ShuffleMode.On
         }
     }
 

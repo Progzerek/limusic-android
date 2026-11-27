@@ -102,6 +102,7 @@ import com.simohypers.limusic.ui.component.ExplicitBadge
 import com.simohypers.limusic.ui.component.heartBurst
 import com.simohypers.limusic.ui.component.rememberHeartBurstState
 import com.simohypers.limusic.ui.component.rememberHolderPainter
+import com.simohypers.limusic.ui.component.TitleWithSuggestedMark
 import com.simohypers.limusic.ui.icon.Favorite
 import com.simohypers.limusic.ui.icon.FavoriteBorder
 import com.simohypers.limusic.ui.icon.Headphones
@@ -111,7 +112,7 @@ import com.simohypers.limusic.ui.icon.PlaylistAdd
 import com.simohypers.limusic.ui.icon.QueueMusic
 import com.simohypers.limusic.ui.icon.Repeat
 import com.simohypers.limusic.ui.icon.RepeatOne
-import com.simohypers.limusic.ui.icon.Shuffle
+import com.simohypers.limusic.ui.icon.shuffleIcon
 import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.screen.player.content.immersive.AudioOutputSheetHost
 import com.simohypers.limusic.ui.screen.player.content.expressive.ExpressiveTransportRow
@@ -707,21 +708,22 @@ internal fun ExpressiveTrackInfoRow(
         }
 
         Column(Modifier.weight(1f)) {
-            Text(
-                text = state.screenData.nowPlayingTitle,
-                style = typo().titleMedium,
-                color = colorScheme.onSurface,
-                maxLines = 1,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .wrapContentHeight(align = Alignment.CenterVertically)
-                        .basicMarquee(
-                            iterations = Int.MAX_VALUE,
-                            animationMode = MarqueeAnimationMode.Immediately,
-                        ).focusable()
-                        .clickable { actions.onNavigateToAlbum() },
-            )
+            TitleWithSuggestedMark(state.suggested, Modifier.fillMaxWidth()) { weight ->
+                Text(
+                    text = state.screenData.nowPlayingTitle,
+                    style = typo().titleMedium,
+                    color = colorScheme.onSurface,
+                    maxLines = 1,
+                    modifier =
+                        weight
+                            .wrapContentHeight(align = Alignment.CenterVertically)
+                            .basicMarquee(
+                                iterations = Int.MAX_VALUE,
+                                animationMode = MarqueeAnimationMode.Immediately,
+                            ).focusable()
+                            .clickable { actions.onNavigateToAlbum() },
+                )
+            }
             Spacer(modifier = Modifier.height(3.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -959,7 +961,7 @@ private fun ExpressiveConnectedGroup(
         ) {
             Crossfade(targetState = state.controllerState.isShuffle, label = "expressiveShuffle") { isShuffle ->
                 Icon(
-                    imageVector = LimusicIcons.Shuffle,
+                    imageVector = state.controllerState.shuffleIcon,
                     contentDescription = "",
                     tint = if (isShuffle) colorScheme.onPrimaryContainer else colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(22.dp),

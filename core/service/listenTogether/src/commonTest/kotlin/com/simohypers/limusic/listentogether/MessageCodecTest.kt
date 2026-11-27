@@ -2,6 +2,7 @@ package com.simohypers.limusic.listentogether
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -132,10 +133,12 @@ class MessageCodecTest {
                     listOf(
                         LinkItem(TrackInfo(id = "dQw4w9WgXcQ", title = "x", artist = "y", thumbnail = "t")),
                         LinkItem(TrackInfo(id = "a-B_c123456", title = "z", artist = "w", thumbnail = "u"), queued = true, queuedFrom = "Album", autoplay = true),
+                        LinkItem(TrackInfo(id = "s0", title = "s", artist = "v", thumbnail = "r"), suggested = true),
                     ),
                 offset = 2,
                 current = 1,
                 shuffle = true,
+                dynamic = true,
                 repeat = "all",
                 source = "Mix",
                 autoplay = true,
@@ -143,11 +146,16 @@ class MessageCodecTest {
         val json = codec.encode(MessageTypes.LINK_STATUS, LinkStatusPayload(status))!!
         assertEquals(
             """{"type":"link_status","status":{"items":[{"id":"dQw4w9WgXcQ","title":"x","artist":"y","thumbnail":"t","duration_ms":0},""" +
-                """{"id":"a-B_c123456","title":"z","artist":"w","thumbnail":"u","duration_ms":0,"queued":true,"queued_from":"Album","autoplay":true}],""" +
-                """"offset":2,"current":1,"shuffle":true,"repeat":"all","source":"Mix","autoplay":true}}""",
+                """{"id":"a-B_c123456","title":"z","artist":"w","thumbnail":"u","duration_ms":0,"queued":true,"queued_from":"Album","autoplay":true},""" +
+                """{"id":"s0","title":"s","artist":"v","thumbnail":"r","duration_ms":0,"suggested":true}],""" +
+                """"offset":2,"current":1,"shuffle":true,"dynamic":true,"repeat":"all","source":"Mix","autoplay":true}}""",
             json,
         )
         assertEquals(MessageTypes.LINK_STATUS to LinkStatusPayload(status), codec.decode(json))
+        // A player from before dynamic shuffle sends neither: plain rows, plain shuffle.
+        val old = codec.decode("""{"type":"link_status","status":{"items":[{"id":"a","title":"t","artist":"a"}],"shuffle":true}}""")!!.second as LinkStatusPayload
+        assertFalse(old.status.dynamic)
+        assertFalse(old.status.items.single().suggested)
     }
 
     @Test

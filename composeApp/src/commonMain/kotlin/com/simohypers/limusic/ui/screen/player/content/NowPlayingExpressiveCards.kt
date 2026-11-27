@@ -94,6 +94,7 @@ import com.simohypers.limusic.ui.component.doubleTapToLike
 import com.simohypers.limusic.ui.component.lyrics.ShareLyricsSheet
 import com.simohypers.limusic.ui.component.lyrics.toShareLyricsLines
 import com.simohypers.limusic.ui.component.rememberHolderPainter
+import com.simohypers.limusic.ui.component.TitleWithSuggestedMark
 import com.simohypers.limusic.ui.icon.AvTimer
 import com.simohypers.limusic.ui.icon.Forward5
 import com.simohypers.limusic.ui.icon.Fullscreen
@@ -920,21 +921,22 @@ internal fun ExpressiveCollapsedToolbar(
                             Modifier
                                 .wrapContentHeight(),
                         ) {
-                            Text(
-                                text = state.screenData.nowPlayingTitle,
-                                style = typo().bodyMedium,
-                                color = Color.White,
-                                maxLines = 1,
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .wrapContentHeight(
-                                            align = Alignment.CenterVertically,
-                                        ).basicMarquee(
-                                            iterations = Int.MAX_VALUE,
-                                            animationMode = MarqueeAnimationMode.Immediately,
-                                        ).focusable(),
-                            )
+                            TitleWithSuggestedMark(state.suggested, Modifier.fillMaxWidth(), size = 12.dp, tint = Color.White) { weight ->
+                                Text(
+                                    text = state.screenData.nowPlayingTitle,
+                                    style = typo().bodyMedium,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    modifier =
+                                        weight
+                                            .wrapContentHeight(
+                                                align = Alignment.CenterVertically,
+                                            ).basicMarquee(
+                                                iterations = Int.MAX_VALUE,
+                                                animationMode = MarqueeAnimationMode.Immediately,
+                                            ).focusable(),
+                                )
+                            }
                             LazyRow(verticalAlignment = Alignment.CenterVertically) {
                                 item {
                                     AnimatedVisibility(visible = state.screenData.isExplicit) {

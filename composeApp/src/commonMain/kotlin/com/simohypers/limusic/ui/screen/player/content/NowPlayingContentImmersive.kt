@@ -93,6 +93,7 @@ import com.simohypers.limusic.ui.component.ExplicitBadge
 import com.simohypers.limusic.ui.component.PillIconButton
 import com.simohypers.limusic.ui.component.doubleTapToLike
 import com.simohypers.limusic.ui.component.rememberHolderPainter
+import com.simohypers.limusic.ui.component.TitleWithSuggestedMark
 import com.simohypers.limusic.ui.icon.Forward5
 import com.simohypers.limusic.ui.icon.Fullscreen
 import com.simohypers.limusic.ui.icon.Replay5
@@ -758,16 +759,17 @@ private fun ImmersiveMainView(
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = state.screenData.nowPlayingTitle,
-                                        style = typography.compactTitle,
-                                        maxLines = 1,
-                                        modifier =
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .basicMarquee(iterations = Int.MAX_VALUE, animationMode = MarqueeAnimationMode.Immediately)
-                                                .focusable(),
-                                    )
+                                    TitleWithSuggestedMark(state.suggested, Modifier.fillMaxWidth(), size = 12.dp, tint = typography.compactTitle.color) { weight ->
+                                        Text(
+                                            text = state.screenData.nowPlayingTitle,
+                                            style = typography.compactTitle,
+                                            maxLines = 1,
+                                            modifier =
+                                                weight
+                                                    .basicMarquee(iterations = Int.MAX_VALUE, animationMode = MarqueeAnimationMode.Immediately)
+                                                    .focusable(),
+                                        )
+                                    }
                                     Spacer(modifier = Modifier.height(3.dp))
                                     Text(
                                         text = state.screenData.artistName,
@@ -884,17 +886,19 @@ internal fun ImmersiveMainTitleRow(
             Spacer(modifier = Modifier.width(10.dp))
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = state.screenData.nowPlayingTitle,
-                style = typography.mainTitle,
-                maxLines = 1,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .basicMarquee(iterations = Int.MAX_VALUE, animationMode = MarqueeAnimationMode.Immediately)
-                        .focusable()
-                        .clickable { actions.onNavigateToAlbum() },
-            )
+            // Dark like the rest of this style: the sparkle in the title's own colour.
+            TitleWithSuggestedMark(state.suggested, Modifier.fillMaxWidth(), size = 16.dp, tint = typography.mainTitle.color) { weight ->
+                Text(
+                    text = state.screenData.nowPlayingTitle,
+                    style = typography.mainTitle,
+                    maxLines = 1,
+                    modifier =
+                        weight
+                            .basicMarquee(iterations = Int.MAX_VALUE, animationMode = MarqueeAnimationMode.Immediately)
+                            .focusable()
+                            .clickable { actions.onNavigateToAlbum() },
+                )
+            }
             Spacer(modifier = Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (state.screenData.isExplicit) {
