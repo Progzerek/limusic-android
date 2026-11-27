@@ -60,6 +60,7 @@ import com.simohypers.limusic.domain.mediaservice.handler.RepeatState
 import com.simohypers.limusic.expect.ui.DeviceVolumeController
 import com.simohypers.limusic.ui.component.DraggableItem
 import com.simohypers.limusic.ui.component.QuickLongPressBox
+import com.simohypers.limusic.ui.component.detectLockedLongPress
 import com.simohypers.limusic.ui.component.ReorderHandle
 import com.simohypers.limusic.ui.component.SongFullWidthItems
 import com.simohypers.limusic.ui.component.SwipeToRemoveQueueRow
@@ -86,6 +87,7 @@ import limusic.composeapp.generated.resources.continue_playing
 import limusic.composeapp.generated.resources.endless_queue
 import limusic.composeapp.generated.resources.now_playing
 import limusic.composeapp.generated.resources.queue_move_below_playing
+import limusic.composeapp.generated.resources.queue_unlock_to_reorder
 
 /**
  * The QUEUE body: compact header, [Info][PlaylistAdd][Shuffle][Repeat] pills, a "Continue
@@ -188,6 +190,7 @@ internal fun ImmersiveQueueView(
         // The list is upcoming tracks only, so its first row is the one right after the playing
         // song (shown in the header above): a row stops there, and pulling it further says why.
         val belowPlaying = stringResource(Res.string.queue_move_below_playing)
+        val unlockToReorder = stringResource(Res.string.queue_unlock_to_reorder)
         val dragDropState =
             rememberDragDropState(
                 lazyListState,
@@ -219,7 +222,16 @@ internal fun ImmersiveQueueView(
                 gesture =
                     Modifier.pointerInput(canEdit, reordering) {
                         // Same guards as QueueBottomSheet: locked, or a room's follower, nothing moves.
-                        if (!canEdit || !reordering) return@pointerInput
+                        if (!canEdit) return@pointerInput
+                        if (!reordering) {
+                            // Locked: a long press on a row says where the lock is (every row here is upcoming).
+                            detectLockedLongPress { pressAt ->
+                                val onRow = dragDropState.itemAt(pressAt) != null
+                                if (onRow) showToast(unlockToReorder, ToastGravity.Bottom)
+                                onRow
+                            }
+                            return@pointerInput
+                        }
                         detectDragGesturesAfterLongPress(
                             onDrag = { change, dragOffset ->
                                 change.consume()

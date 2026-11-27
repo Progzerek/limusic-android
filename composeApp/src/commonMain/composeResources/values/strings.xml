@@ -423,6 +423,7 @@
     <string name="queue_ends">The queue ends after this song.</string>
     <string name="empty_queue">Queue is empty</string>
     <string name="queue_move_below_playing">Songs can only move below the one that's playing</string>
+    <string name="queue_unlock_to_reorder">Tap the lock at the top to move songs</string>
     <string name="autoplay_similar_songs">Autoplay similar songs</string>
     <string name="autoplay_similar_songs_hint">Continuously play recommended tracks when the queue finishes.</string>
     <string name="prevent_duplicates">Prevent duplicate songs in queue</string>
