@@ -294,6 +294,7 @@ internal class MessageCodec {
                                 if (item.queuedEnd) put("queued_end", true)
                                 item.queuedFrom?.let { put("queued_from", it) }
                                 if (item.autoplay) put("autoplay", true)
+                                if (item.suggested) put("suggested", true)
                             },
                         )
                     }
@@ -302,6 +303,7 @@ internal class MessageCodec {
             put("offset", offset)
             put("current", current)
             put("shuffle", shuffle)
+            if (dynamic) put("dynamic", true)
             put("repeat", repeat)
             source?.let { put("source", it) }
             autoplay?.let { put("autoplay", it) }
@@ -318,11 +320,13 @@ internal class MessageCodec {
                         queuedEnd = o.bool("queued_end"),
                         queuedFrom = o.optStr("queued_from"),
                         autoplay = o.bool("autoplay"),
+                        suggested = o.bool("suggested"),
                     )
                 }.orEmpty(),
             offset = int("offset"),
             current = int("current"),
             shuffle = bool("shuffle"),
+            dynamic = bool("dynamic"),
             repeat = str("repeat").ifBlank { "off" },
             source = optStr("source"),
             autoplay = this["autoplay"]?.jsonPrimitive?.booleanOrNull,

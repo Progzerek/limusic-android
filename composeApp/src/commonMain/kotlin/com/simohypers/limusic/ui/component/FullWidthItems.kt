@@ -99,6 +99,7 @@ import com.simohypers.limusic.ui.icon.MoreVert
 import com.simohypers.limusic.ui.icon.PlayCircle
 import com.simohypers.limusic.ui.icon.PushPin
 import com.simohypers.limusic.ui.icon.QueueMusic
+import com.simohypers.limusic.ui.icon.Suggested
 import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.theme.LocalForceDarkText
 import com.simohypers.limusic.ui.theme.typo
@@ -116,6 +117,7 @@ import limusic.composeapp.generated.resources.play_next
 import limusic.composeapp.generated.resources.playlist
 import limusic.composeapp.generated.resources.podcasts
 import limusic.composeapp.generated.resources.radio
+import limusic.composeapp.generated.resources.suggested_by_dynamic_shuffle
 import limusic.composeapp.generated.resources.you
 import kotlin.math.roundToInt
 
@@ -153,6 +155,8 @@ fun SongFullWidthItems(
     trailingView: @Composable (() -> Unit)? = null,
     // Before the cover, inside the row's tap and tint: a chart's rank.
     leadingView: @Composable (() -> Unit)? = null,
+    // A queue row dynamic shuffle lined up: a sparkle in front of the artist. Queue rows only.
+    suggested: Boolean = false,
 ) {
     val contentColor = if (forceDark) Color.White else MaterialTheme.colorScheme.onSurface
     val subtitleColor = if (forceDark) Color(0xC4FFFFFF) else MaterialTheme.colorScheme.onSurfaceVariant
@@ -472,6 +476,16 @@ fun SongFullWidthItems(
                                 )
                                 Spacer(modifier = Modifier.width(5.dp))
                             }
+                        }
+                        // Where the explicit mark goes: it says where the track came from, and the
+                        // title keeps its whole width. Read out with the row.
+                        if (suggested) {
+                            Icon(
+                                imageVector = LimusicIcons.Suggested,
+                                contentDescription = stringResource(Res.string.suggested_by_dynamic_shuffle),
+                                tint = if (forceDark) contentColor else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(end = 4.dp).size(12.dp),
+                            )
                         }
                         Text(
                             text =

@@ -70,6 +70,7 @@ import com.simohypers.limusic.ui.icon.PlaylistAdd
 import com.simohypers.limusic.ui.icon.Repeat
 import com.simohypers.limusic.ui.icon.RepeatOne
 import com.simohypers.limusic.ui.icon.Shuffle
+import com.simohypers.limusic.ui.icon.shuffleIcon
 import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentActions
 import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentState
@@ -273,6 +274,7 @@ internal fun ImmersiveQueueView(
                                 SongFullWidthItems(
                                     track = track,
                                     isPlaying = false,
+                                    suggested = track.suggested,
                                     modifier = Modifier.fillMaxWidth(),
                                     onClickListener = { videoId ->
                                         if (videoId == track.videoId) actions.onSeekToQueueIndex(queueIndex)
@@ -355,7 +357,7 @@ private fun ImmersiveQueuePillsRow(
             modifier = Modifier.weight(1f),
         )
         ImmersiveQueuePill(
-            icon = LimusicIcons.Shuffle,
+            icon = state.controllerState.shuffleIcon,
             active = state.controllerState.isShuffle,
             activeContainer = activePillContainer,
             activeContent = activePillContent,

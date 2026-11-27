@@ -124,8 +124,9 @@ import com.simohypers.limusic.ui.icon.PlaylistAdd
 import com.simohypers.limusic.ui.icon.QueueMusic
 import com.simohypers.limusic.ui.icon.Repeat
 import com.simohypers.limusic.ui.icon.RepeatOne
-import com.simohypers.limusic.ui.icon.Shuffle
+import com.simohypers.limusic.ui.icon.shuffleIcon
 import com.simohypers.limusic.ui.component.doubleTapToLike
+import com.simohypers.limusic.ui.component.TitleWithSuggestedMark
 import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.icon.SkipNext
 import com.simohypers.limusic.ui.icon.SkipPrevious
@@ -749,13 +750,15 @@ private fun TitleRow(
         Column(Modifier.weight(1f)) {
             // Like sits on the title's line, not between title and artist.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = state.screenData.nowPlayingTitle,
-                    style = typo().titleLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = 1,
-                    modifier = Modifier.weight(1f).basicMarquee().clickable(onClick = actions.onNavigateToAlbum),
-                )
+                TitleWithSuggestedMark(state.suggested, Modifier.weight(1f), size = 16.dp) { weight ->
+                    Text(
+                        text = state.screenData.nowPlayingTitle,
+                        style = typo().titleLarge,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        modifier = weight.basicMarquee().clickable(onClick = actions.onNavigateToAlbum),
+                    )
+                }
                 IconButton(onClick = { actions.onUIEvent(UIEvent.ToggleLike) }, modifier = Modifier.size(40.dp)) {
                     Icon(
                         if (liked) LimusicIcons.Favorite else LimusicIcons.FavoriteBorder,
@@ -871,7 +874,7 @@ private fun BottomRow(
             active = control.repeatState !is RepeatState.None,
         ) { actions.onUIEvent(UIEvent.Repeat) }
         OutlinedButton(LimusicIcons.Lyrics, active = view == ClassicView.LYRICS, onClick = onLyrics)
-        OutlinedButton(LimusicIcons.Shuffle, active = control.isShuffle) { actions.onUIEvent(UIEvent.Shuffle) }
+        OutlinedButton(control.shuffleIcon, active = control.isShuffle) { actions.onUIEvent(UIEvent.Shuffle) }
         OutlinedButton(LimusicIcons.QueueMusic, active = view == ClassicView.QUEUE, onClick = onQueue)
         Spacer(Modifier.weight(1f))
         FilledButton(LimusicIcons.MoreVert, Modifier.size(46.dp), CircleShape, onClick = actions.onShowMoreSheet)

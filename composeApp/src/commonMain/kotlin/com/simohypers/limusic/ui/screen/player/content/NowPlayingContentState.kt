@@ -135,6 +135,8 @@ class NowPlayingContentState(
      * style puts a small cover beside the title instead, and tightens its controls.
      */
     val isShort: Boolean = false,
+    /** Dynamic shuffle lined the playing track up: a sparkle by its title. */
+    val suggested: Boolean = false,
 )
 
 /**

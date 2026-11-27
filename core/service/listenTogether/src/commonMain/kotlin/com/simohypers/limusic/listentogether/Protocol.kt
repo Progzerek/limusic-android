@@ -336,6 +336,8 @@ data class LinkStatus(
     /** The playing row, in [items]. */
     val current: Int = 0,
     val shuffle: Boolean = false,
+    /** Dynamic shuffle, with [shuffle]. Absent (false) from a player that predates it. */
+    val dynamic: Boolean = false,
     /** "off" | "all" | "one" */
     val repeat: String = "off",
     val source: String? = null,
@@ -352,6 +354,8 @@ data class LinkItem(
     val queuedEnd: Boolean = false,
     val queuedFrom: String? = null,
     val autoplay: Boolean = false,
+    /** Lined up by dynamic shuffle. */
+    val suggested: Boolean = false,
 )
 
 data class LinkStatusPayload(

@@ -11,6 +11,7 @@ import com.simohypers.limusic.domain.extension.now
 import com.simohypers.limusic.domain.mediaservice.handler.DownloadHandler
 import com.simohypers.limusic.domain.mediaservice.handler.PlaylistType
 import com.simohypers.limusic.domain.mediaservice.handler.QueueData
+import com.simohypers.limusic.domain.mediaservice.handler.ShuffleMode
 import com.simohypers.limusic.domain.repository.AlbumRepository
 import com.simohypers.limusic.domain.repository.SongRepository
 import com.simohypers.limusic.domain.repository.collectionDownload
@@ -223,7 +224,8 @@ class AlbumViewModel(
         loadMediaItem(track, Config.ALBUM_CLICK, if (index == -1) 0 else index)
     }
 
-    fun shuffle() {
+    /** [dynamic] is the shuffle menu's pick, null when the page has no menu and sticky shuffle decides. */
+    fun shuffle(dynamic: Boolean? = null) {
         if (uiState.value.listTrack.isEmpty()) {
             makeToast(getString(Res.string.playlist_is_empty))
             return
@@ -236,10 +238,14 @@ class AlbumViewModel(
                 playlistName = uiState.value.title,
                 playlistType = PlaylistType.ALBUM,
                 shuffle = true,
+                dynamic = dynamic,
             ),
         )
         loadMediaItem(list.first(), Config.ALBUM_CLICK, null)
     }
+
+    /** The header's shuffle menu: switch the playing album's mode in place, or start it in [mode]. */
+    fun shuffleIn(mode: ShuffleMode) = shuffleFrom(mode, uiState.value.audioPlaylistId.ifEmpty { null }) { dynamic -> shuffle(dynamic) }
 
     /** Runs [action] with the album once it has loaded ([onDone] either way, after it). */
     fun afterLoad(

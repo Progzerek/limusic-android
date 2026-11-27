@@ -9,6 +9,8 @@ sealed class GenericCommandButton {
 
     data class Shuffle(
         val isShuffled: Boolean,
+        /** Dynamic shuffle, with [isShuffled]. */
+        val isDynamic: Boolean = false,
     ) : GenericCommandButton()
 
     data class Repeat(

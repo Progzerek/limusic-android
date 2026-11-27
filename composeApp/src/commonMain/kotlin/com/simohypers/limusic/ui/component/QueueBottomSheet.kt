@@ -722,6 +722,7 @@ private fun LazyItemScope.QueueRow(
                 SongFullWidthItems(
                     track = track,
                     isPlaying = playing,
+                    suggested = track.suggested,
                     onClickListener = { onPlay() },
                     onMoreClickListener = { onMore() },
                     modifier = Modifier.fillMaxWidth(),

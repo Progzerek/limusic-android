@@ -51,6 +51,8 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
+import com.simohypers.limusic.domain.mediaservice.queue.dynamicShuffleOffered
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -148,6 +150,8 @@ fun AlbumScreen(
     val hazeState = rememberHazeState()
     val background = MaterialTheme.colorScheme.background
     val isThisPlaying = playingVideoId.isNotEmpty() && playingPlaylistId == browseId.replaceFirst("VL", "")
+    val audioPlaylistId = uiState.audioPlaylistId.ifEmpty { null }
+    val shuffleMode by remember(audioPlaylistId) { viewModel.shuffleModeFor(audioPlaylistId) }.collectAsState(initial = null)
 
     Crossfade(uiState.loadState) {
         when (it) {
@@ -208,7 +212,10 @@ fun AlbumScreen(
                                             uiState.listTrack.firstOrNull()?.let { track -> viewModel.playTrack(track) }
                                         }
                                     },
-                                    onShuffle = viewModel::shuffle,
+                                    onShuffle = { viewModel.shuffle() },
+                                    shuffleMode = shuffleMode,
+                                    // Dynamic shuffle draws on the album's audio playlist radio.
+                                    onShuffleIn = if (dynamicShuffleOffered(uiState.audioPlaylistId.ifEmpty { null })) viewModel::shuffleIn else null,
                                 )
                                 CollectionAuthorLine(
                                     name = uiState.artist.name,

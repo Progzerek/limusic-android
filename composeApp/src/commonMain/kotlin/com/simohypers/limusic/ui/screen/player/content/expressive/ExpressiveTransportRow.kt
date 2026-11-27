@@ -35,7 +35,7 @@ import com.simohypers.limusic.ui.icon.Pause
 import com.simohypers.limusic.ui.icon.PlayArrow
 import com.simohypers.limusic.ui.icon.Repeat
 import com.simohypers.limusic.ui.icon.RepeatOne
-import com.simohypers.limusic.ui.icon.Shuffle
+import com.simohypers.limusic.ui.icon.shuffleIcon
 import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.icon.SkipNext
 import com.simohypers.limusic.ui.icon.SkipPrevious
@@ -123,7 +123,7 @@ fun ExpressiveTransportRow(
     ) {
         if (showShuffleAndRepeat) {
             ExpressiveToggleButton(
-                icon = LimusicIcons.Shuffle,
+                icon = controllerState.shuffleIcon,
                 active = controllerState.isShuffle,
                 onClick = { onUIEvent(UIEvent.Shuffle) },
             )

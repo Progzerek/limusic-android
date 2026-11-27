@@ -56,13 +56,28 @@ import com.simohypers.limusic.ui.icon.ArrowBackIosNew
 import com.simohypers.limusic.ui.icon.Pause
 import com.simohypers.limusic.ui.icon.PlayArrow
 import com.simohypers.limusic.ui.icon.Shuffle
+import com.simohypers.limusic.ui.icon.Check
+import com.simohypers.limusic.ui.icon.DynamicShuffle
 import com.simohypers.limusic.ui.icon.LimusicIcons
+import com.simohypers.limusic.ui.theme.rounded
 import com.simohypers.limusic.ui.theme.typo
+import com.simohypers.limusic.domain.mediaservice.handler.ShuffleMode
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import limusic.composeapp.generated.resources.Res
+import limusic.composeapp.generated.resources.dynamic_shuffle
+import limusic.composeapp.generated.resources.dynamic_shuffle_hint
 import limusic.composeapp.generated.resources.pause
 import limusic.composeapp.generated.resources.play
 import limusic.composeapp.generated.resources.shuffle
+import limusic.composeapp.generated.resources.shuffle_hint
 
 /**
  * The top of an album or playlist page: SimpMusic's edge-to-edge cover, fading into the page's own
@@ -137,6 +152,10 @@ fun CollectionTitle(
     // Null hides both buttons: an empty list has nothing to play.
     onPlay: (() -> Unit)?,
     onShuffle: (() -> Unit)?,
+    // The mode the queue plays this page in while it's the one playing, null when it isn't.
+    shuffleMode: ShuffleMode? = null,
+    // Dynamic shuffle is on offer: Shuffle opens a menu of the two modes instead of [onShuffle].
+    onShuffleIn: ((ShuffleMode) -> Unit)? = null,
 ) {
     Text(
         text = kicker.uppercase(),
@@ -147,7 +166,7 @@ fun CollectionTitle(
         title = { CollectionTitleText(title) },
     ) {
         if (onPlay != null) {
-            if (onShuffle != null) RoundIconButton(LimusicIcons.Shuffle, stringResource(Res.string.shuffle), onShuffle)
+            if (onShuffle != null) ShuffleButton(shuffleMode, onShuffle, onShuffleIn)
             RoundAccentButton(
                 if (playing) LimusicIcons.Pause else LimusicIcons.PlayArrow,
                 stringResource(if (playing) Res.string.pause else Res.string.play),
@@ -187,6 +206,73 @@ fun CollectionTitleText(
         modifier = modifier,
     )
 }
+
+/**
+ * A playlist or album page's Shuffle. Where dynamic shuffle is on offer ([onPick]) it opens a menu
+ * of Shuffle and Dynamic shuffle with the mode this page plays in ticked; elsewhere a tap is
+ * [onShuffle], straight away. Lit while the queue plays this page shuffled ([mode]), with the
+ * dynamic glyph while that's dynamic.
+ */
+@Composable
+private fun ShuffleButton(
+    mode: ShuffleMode?,
+    onShuffle: () -> Unit,
+    onPick: ((ShuffleMode) -> Unit)?,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val lit = mode == ShuffleMode.On || mode == ShuffleMode.Dynamic
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Box(
+            Modifier
+                .size(52.dp)
+                .clip(CircleShape)
+                .background(if (lit) scheme.primary.copy(alpha = 0.15f) else Color.Transparent)
+                .clickable { if (onPick != null) open = true else onShuffle() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (mode == ShuffleMode.Dynamic) LimusicIcons.DynamicShuffle else LimusicIcons.Shuffle,
+                stringResource(Res.string.shuffle),
+                Modifier.size(26.dp),
+                if (lit) scheme.primary else scheme.onSurface,
+            )
+        }
+        if (onPick != null) {
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }, shape = rounded(16.dp)) {
+                for ((option, icon, title, hint) in listOf(
+                    ShuffleOption(ShuffleMode.On, LimusicIcons.Shuffle, Res.string.shuffle, Res.string.shuffle_hint),
+                    ShuffleOption(ShuffleMode.Dynamic, LimusicIcons.DynamicShuffle, Res.string.dynamic_shuffle, Res.string.dynamic_shuffle_hint),
+                )) {
+                    val checked = mode == option
+                    val tint = if (checked) scheme.primary else scheme.onSurface
+                    DropdownMenuItem(
+                        leadingIcon = { Icon(icon, null, Modifier.size(22.dp), tint) },
+                        text = {
+                            Column {
+                                Text(stringResource(title), style = typo().titleSmall, color = tint)
+                                Text(stringResource(hint), style = typo().bodySmall, color = scheme.onSurfaceVariant)
+                            }
+                        },
+                        trailingIcon = if (checked) ({ Icon(LimusicIcons.Check, null, Modifier.size(20.dp), scheme.primary) }) else null,
+                        onClick = {
+                            open = false
+                            onPick(option)
+                        },
+                        modifier = Modifier.semantics { selected = checked },
+                    )
+                }
+            }
+        }
+    }
+}
+
+private data class ShuffleOption(
+    val mode: ShuffleMode,
+    val icon: ImageVector,
+    val title: StringResource,
+    val hint: StringResource,
+)
 
 /** 52dp, borderless: Shuffle beside an album's Play, Radio beside an artist's Shuffle. */
 @Composable

@@ -67,7 +67,13 @@ import com.simohypers.limusic.domain.mediaservice.queue.retainUpcoming
 import com.simohypers.limusic.domain.mediaservice.queue.spliceRadio
 import com.simohypers.limusic.domain.mediaservice.queue.startSong
 import com.simohypers.limusic.domain.mediaservice.queue.startTracks
-import com.simohypers.limusic.domain.mediaservice.queue.toggleShuffle
+import com.simohypers.limusic.domain.mediaservice.queue.absorbSuggestions
+import com.simohypers.limusic.domain.mediaservice.queue.dynamicAllowed
+import com.simohypers.limusic.domain.mediaservice.queue.nextShuffleMode
+import com.simohypers.limusic.domain.mediaservice.queue.setShuffle
+import com.simohypers.limusic.domain.mediaservice.queue.suggestionAnchor
+import com.simohypers.limusic.domain.mediaservice.handler.ShuffleMode
+import com.simohypers.limusic.domain.utils.Resource
 import com.simohypers.limusic.domain.utils.isRadioQueueId
 import com.simohypers.limusic.domain.mediaservice.handler.SimpleMediaState
 import com.simohypers.limusic.domain.mediaservice.handler.SleepTimerState
@@ -719,7 +725,7 @@ internal class MediaServiceHandlerImpl(
                 onUpdateNotification.invoke(
                     listOf(
                         GenericCommandButton.Like(liked),
-                        GenericCommandButton.Shuffle(isShuffled = _controlState.value.isShuffle),
+                        GenericCommandButton.Shuffle(isShuffled = _controlState.value.isShuffle, isDynamic = _controlState.value.isDynamicShuffle),
                         GenericCommandButton.Repeat(repeatState = _controlState.value.repeatState),
                         GenericCommandButton.Radio,
                     ),
@@ -1077,7 +1083,8 @@ internal class MediaServiceHandlerImpl(
         if (seed != null && data.playlistType == PlaylistType.RADIO && seed.isRadioQueueId()) {
             startRadio(list, start ?: 0, track.videoId, seed, data.playlistName, play)
         } else {
-            playTracks(list, if (data.shuffle) null else start, data, play)
+            // A pick from the page shuffle menu shuffles either way.
+            playTracks(list, if (data.shuffle || data.dynamic != null) null else start, data, play)
         }
     }
 
@@ -1116,8 +1123,9 @@ internal class MediaServiceHandlerImpl(
         radio: Boolean = false,
     ) {
         generation++
-        q.startTracks(list, start, data.playlistId, data.playlistName, data.shuffle, stickyShuffle, shuffleWhole, player.contentPosition)
+        q.startTracks(list, start, data.playlistId, data.playlistName, data.shuffle, stickyShuffle, shuffleWhole, player.contentPosition, data.dynamic)
         q.radio = radio
+        if (radio) q.dynamic = false
         playlistType = data.playlistType
         // Crossfade steps aside between an album's own tracks, which a shuffle no longer plays in order.
         player.albumTrackIds =
@@ -1126,6 +1134,7 @@ internal class MediaServiceHandlerImpl(
         val source = data.playlistId
         val token = data.continuation
         if (source != null && !token.isNullOrEmpty() && !isMix(source)) fill(q.epoch, source, token, data.nextContinuation)
+        if (q.dynamic) coroutineScope.launch { topUpSuggestions() }
     }
 
     /**
@@ -1274,6 +1283,35 @@ internal class MediaServiceHandlerImpl(
         return added
     }
 
+    /**
+     * Dynamic shuffle: line up more suggestions when three or fewer are left ahead. One request to
+     * the playlist's own radio, anchored on the playing track; [suggestionAnchor] makes this a no-op
+     * for almost every track start, and an anchor whose page had nothing new isn't asked again. Keyed
+     * to the queue (epoch), not the load: a skip within the queue doesn't void the page. Never for a
+     * room's guest: the host's queue is the host's.
+     */
+    private suspend fun topUpSuggestions() {
+        if (followingRoom || PlaybackRefusals.blocked.value != null) return
+        val epoch = q.epoch
+        val anchor = q.suggestionAnchor(shuffleWhole) ?: return
+        if (q.suggestDry == (epoch to anchor) || q.suggestInflight == epoch) return
+        val seed = q.radioSeed ?: return
+        q.suggestInflight = epoch
+        val page =
+            try {
+                val res = songRepository.getRadioFromEndpoint(YouTubeWatchEndpoint(videoId = anchor, playlistId = seed)).lastOrNull()
+                (res as? Resource.Success)?.data?.first?.let { freshened(it) }
+            } finally {
+                if (q.suggestInflight == epoch) q.suggestInflight = null
+            }
+        // Failed: not marked dry, the next track start asks again. Another queue, switched off, or
+        // joined a room while it was fetched: the answer is for nobody.
+        if (page == null || q.epoch != epoch || !q.dynamic || followingRoom) return
+        val added = q.absorbSuggestions(page, anchor, shuffleWhole)
+        Logger.i("Playback", "dynamic shuffle lined up $added suggestions")
+        if (added > 0) sync()
+    }
+
     /** The Autoplay switch: off takes autoplay's upcoming tracks away, on tops a short queue up now. */
     private suspend fun autoplayChanged(on: Boolean) {
         if (on) {
@@ -1345,11 +1383,20 @@ internal class MediaServiceHandlerImpl(
         restorePrev()
     }
 
-    private fun toggleShuffle() {
-        q.toggleShuffle(shuffleWhole)
+    /** The shuffle button: off, shuffle, dynamic shuffle where the queue has a playlist radio, off. */
+    private fun toggleShuffle() = changeShuffle(q.nextShuffleMode())
+
+    override fun setShuffle(mode: ShuffleMode) = changeShuffle(if (mode == ShuffleMode.Dynamic && !q.dynamicAllowed()) ShuffleMode.On else mode)
+
+    private fun changeShuffle(mode: ShuffleMode) {
+        if (!q.setShuffle(mode, shuffleWhole)) return
         sync()
-        // Un-shuffling can leave nothing upcoming: a full pass drops every heard track.
-        coroutineScope.launch { extendQueueRadio() }
+        coroutineScope.launch {
+            // The button answers now; the suggestions land a round trip later.
+            topUpSuggestions()
+            // Un-shuffling can leave nothing upcoming: a full pass drops every heard track.
+            extendQueueRadio()
+        }
     }
 
     override fun removeMediaItem(position: Int) {
@@ -1436,6 +1483,7 @@ internal class MediaServiceHandlerImpl(
         q.items = mutableListOf()
         q.current = 0
         q.shuffleOrig = null
+        q.dynamic = false
         q.radioSeed = null
         q.sourceName = null
         q.sourceId = null
@@ -1488,6 +1536,7 @@ internal class MediaServiceHandlerImpl(
         _controlState.update {
             it.copy(
                 isShuffle = q.shuffled,
+                isDynamicShuffle = q.dynamic,
                 isNextAvailable = player.repeatMode != PlayerConstants.REPEAT_MODE_OFF || q.current + 1 < q.items.size || autoplayOn(),
                 // Previous always does something once a track is loaded: restart, or go back.
                 isPreviousAvailable = q.items.isNotEmpty(),
@@ -1505,6 +1554,8 @@ internal class MediaServiceHandlerImpl(
         val type: String? = null,
         /** The pre-shuffle order as video ids, while shuffled. */
         val shuffle: List<String>? = null,
+        /** Dynamic shuffle, with [shuffle]. */
+        val dynamic: Boolean = false,
     )
 
     private class QueueSnapshot(
@@ -1527,6 +1578,7 @@ internal class MediaServiceHandlerImpl(
                     radio = q.radio,
                     type = playlistType?.name,
                     shuffle = q.shuffleOrig?.map { it.videoId },
+                    dynamic = q.dynamic,
                 ),
             positionMs = positionMs,
         )
@@ -1590,6 +1642,7 @@ internal class MediaServiceHandlerImpl(
                     val byId = items.associateBy { it.videoId }
                     ids.mapNotNullTo(mutableListOf()) { byId[it] }
                 }
+            q.dynamic = q.shuffleOrig != null && meta?.dynamic == true
             playlistType = meta?.type?.let { runCatching { PlaylistType.valueOf(it) }.getOrNull() }
             player.setQueue(items.map { it.media() }, current, position, reload = true, playWhenReady = playWhenReady || playRequestedDuringRestore)
             // From here the track is in the player, so restoreQueueAndPlay can start it itself.
@@ -1927,8 +1980,12 @@ internal class MediaServiceHandlerImpl(
         if (q.current == 0) {
             resetCrossfade()
         }
-        // Autoplay's early trigger: tops the queue up while two or fewer tracks are left.
-        coroutineScope.launch { extendQueueRadio() }
+        // Autoplay's early trigger: tops the queue up while two or fewer tracks are left. Dynamic
+        // shuffle's top-up rides along, at the same near-zero cost.
+        coroutineScope.launch {
+            extendQueueRadio()
+            topUpSuggestions()
+        }
     }
 
     /** The database's view of the track: a restart (repeat-one) or fuller data for the one playing. */
