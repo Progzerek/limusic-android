@@ -521,9 +521,11 @@ private fun NowPlayingSongHeader(
  * swipe or a skip. Each cover keeps its layer as the pager moves on, so none reloads mid-slide.
  */
 @Composable
-private fun PagerFrostedCover(
+internal fun PagerFrostedCover(
     state: NowPlayingContentState,
     wash: Color,
+    washFrom: Float = 0.5f,
+    washTo: Float = 0.75f,
 ) {
     val pager = state.artworkPagerState
     val below by remember(pager) { derivedStateOf { pager.pageBelow() } }
@@ -534,7 +536,7 @@ private fun PagerFrostedCover(
             FrostLayer(url, Modifier.graphicsLayer { alpha = if (page == below) 1f else pager.slidPast(below) })
         }
     }
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to wash.copy(alpha = 0.5f), 1f to wash.copy(alpha = 0.75f))))
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to wash.copy(alpha = washFrom), 1f to wash.copy(alpha = washTo))))
 }
 
 /**
