@@ -123,6 +123,7 @@ import limusic.composeapp.generated.resources.now_playing
 import limusic.composeapp.generated.resources.queue
 import limusic.composeapp.generated.resources.queue_ends
 import limusic.composeapp.generated.resources.queue_move_below_playing
+import limusic.composeapp.generated.resources.queue_unlock_to_reorder
 import limusic.composeapp.generated.resources.songs_left
 import limusic.composeapp.generated.resources.songs_left_one
 
@@ -342,6 +343,7 @@ internal fun QueueList(
         }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = lazyIndex(current.coerceAtLeast(0)))
     val belowPlaying = stringResource(Res.string.queue_move_below_playing)
+    val unlockToReorder = stringResource(Res.string.queue_unlock_to_reorder)
     val dragDropState =
         rememberDragDropState(
             listState,
@@ -410,7 +412,17 @@ internal fun QueueList(
             gesture =
                 // Not keyed on the playing index: a song ending mid-drag mustn't drop the row in hand.
                 Modifier.pointerInput(canEdit, reordering) {
-                    if (!canEdit || !reordering) return@pointerInput
+                    if (!canEdit) return@pointerInput
+                    if (!reordering) {
+                        // Locked: a long press on a row that could move says where the lock is.
+                        detectLockedLongPress { offset ->
+                            val item = dragDropState.itemAt(offset)
+                            val movable = item != null && (item.key as? String) in currentKeys && item.index > playingLazy
+                            if (movable) showToast(unlockToReorder, ToastGravity.Bottom)
+                            movable
+                        }
+                        return@pointerInput
+                    }
                     detectDragGesturesAfterLongPress(
                         onDragStart = { offset ->
                             // Only songs, not the divider; canMoveTo keeps it to the upcoming ones.

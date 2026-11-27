@@ -17,6 +17,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
@@ -52,6 +53,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.DefaultShadowColor
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.LocalPinnableContainer
@@ -375,6 +378,22 @@ fun QuickLongPressBox(
         }
     }
 }
+
+/**
+ * A locked list's long press: [onLongPress] gets where it landed and says whether it took it. A
+ * taken press is eaten from there on, before the rows see it, so letting go doesn't also click the
+ * row under the finger and dragging on doesn't scroll the list or swipe the row away.
+ */
+suspend fun PointerInputScope.detectLockedLongPress(onLongPress: (Offset) -> Boolean) =
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val press = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
+        if (!onLongPress(press.position)) return@awaitEachGesture
+        do {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            event.changes.forEach { it.consume() }
+        } while (event.changes.any { it.pressed })
+    }
 
 private const val QUICK_LONG_PRESS_MS = 300L
 private const val DEFAULT_LONG_PRESS_MS = 500L
