@@ -55,6 +55,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import com.simohypers.limusic.domain.mediaservice.queue.dynamicShuffleOffered
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -286,6 +287,7 @@ fun PlaylistScreen(
                 val hazeState =
                     rememberHazeState()
                 val isThisPlaying = isPlaying && playingPlaylistId == data.id
+                val shuffleMode by remember(data.id) { viewModel.shuffleModeFor(data.id) }.collectAsState(initial = null)
                 LazyColumn(
                     modifier =
                         Modifier
@@ -362,6 +364,13 @@ fun PlaylistScreen(
                                             }
                                         },
                                         onShuffle = if (data.isRadio) null else ({ viewModel.onUIEvent(PlaylistUIEvent.Shuffle) }),
+                                        shuffleMode = shuffleMode,
+                                        onShuffleIn =
+                                            if (!data.isRadio && dynamicShuffleOffered(data.id)) {
+                                                { mode -> viewModel.onUIEvent(PlaylistUIEvent.ShuffleIn(mode)) }
+                                            } else {
+                                                null
+                                            },
                                     )
                                     CollectionAuthorLine(
                                         name = data.author.name,

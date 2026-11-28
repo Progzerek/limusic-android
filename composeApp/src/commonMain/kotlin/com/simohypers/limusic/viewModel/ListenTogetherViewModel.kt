@@ -2,6 +2,7 @@ package com.simohypers.limusic.viewModel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.eygraber.uri.Uri
 import com.simohypers.limusic.data.listentogether.ListenTogetherPlaybackBridge
 import com.simohypers.limusic.data.listentogether.ListenTogetherPrefs
 import com.simohypers.limusic.domain.data.model.listentogether.ListenTogetherRoom
@@ -66,6 +67,19 @@ class ListenTogetherViewModel(
 
     /** Between pressing Start or Join and being in the room. */
     val requesting: StateFlow<Boolean> = _requesting.asStateFlow()
+
+    /** Hosting: join requests are approved without asking. Saved, so it holds for every room. */
+    val autoAdmit: StateFlow<Boolean> =
+        dataStore
+            .getString(ListenTogetherPrefs.AUTO_ADMIT)
+            .map { it == DataStoreManager.TRUE }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** Turning it on also lets in whoever is waiting (the repository passes it to the session). */
+    fun setAutoAdmit(on: Boolean) =
+        viewModelScope.launch {
+            dataStore.putString(ListenTogetherPrefs.AUTO_ADMIT, if (on) DataStoreManager.TRUE else DataStoreManager.FALSE)
+        }
 
     /** On the server picked in the ⋮ sheet. */
     fun host(name: String) = start(name, server = null) { repository.createRoom(name) }
@@ -166,5 +180,60 @@ class ListenTogetherViewModel(
             if ('/' !in server.substringAfter("://")) server += "/ws"
             return server to s.substring(0, at).uppercase()
         }
+
+        /** The server an invite joins, stored the way the saved one is (empty for the default); null if it is no invite. */
+        fun serverOf(invite: String): String? = parseInvite(invite)?.first?.let { if (it == DEFAULT_SERVER_URL) "" else it }
+
+        /** The sync server's room codes: eight capital letters and digits. */
+        const val ROOM_CODE_LENGTH = 8
+
+        /** The deep link host a room's QR code points at. */
+        const val LINK_HOST = "listen"
+
+        /**
+         * What a room's QR code holds: `limusic://listen?room=CODE`, plus `&server=` with the same
+         * host part a `CODE@host` invite carries when the room is not on the default server. A
+         * camera app opens it as a deep link, the in-app scanner reads it with [inviteOfLink].
+         */
+        fun makeLink(
+            server: String,
+            code: String,
+        ): String {
+            val link = "limusic://$LINK_HOST?room=$code"
+            if (server.isEmpty()) return link
+            return link + "&server=" + percentEncode(makeInvite(server, code).substringAfter('@'))
+        }
+
+        /**
+         * The invite a room link stands for (`CODE`, or `CODE@host`), or null when [text] is
+         * anything else: another app's link, a code of the wrong shape, a server that is not one.
+         */
+        fun inviteOfLink(text: String): String? {
+            // Parsing never throws for a hierarchical link, but reading an odd one's query might.
+            return runCatching {
+                val uri = Uri.parse(text.trim())
+                if (!uri.scheme.equals("limusic", ignoreCase = true) || !uri.host.equals(LINK_HOST, ignoreCase = true)) return null
+                val code = uri.getQueryParameter("room")?.trim()?.uppercase() ?: return null
+                if (code.length != ROOM_CODE_LENGTH || !code.all { it in 'A'..'Z' || it in '0'..'9' }) return null
+                val server = uri.getQueryParameter("server")?.trim().orEmpty()
+                if (server.any { it.isWhitespace() || it in "@?#" }) return null
+                if (server.isEmpty()) code else "$code@$server"
+            }.getOrNull()
+        }
+
+        /** Everything but RFC 3986's unreserved characters as %XX, so `ws://host:port/ws` survives a query. */
+        private fun percentEncode(s: String): String =
+            buildString {
+                s.encodeToByteArray().forEach { b ->
+                    val c = b.toInt().toChar()
+                    if (c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c in "-._~") {
+                        append(c)
+                    } else {
+                        append('%').append(HEX[(b.toInt() shr 4) and 0xF]).append(HEX[b.toInt() and 0xF])
+                    }
+                }
+            }
+
+        private const val HEX = "0123456789ABCDEF"
     }
 }

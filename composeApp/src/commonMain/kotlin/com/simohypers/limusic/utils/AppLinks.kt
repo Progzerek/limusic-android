@@ -4,7 +4,7 @@ import com.eygraber.uri.Uri
 import com.simohypers.limusic.common.LibraryChipType
 
 // Every path the deep-link router in App.kt opens; anything else gets its "link not supported" toast.
-private val APP_LINK_PATHS = setOf("notification", "watch", "playlist", "channel", "c", "album", "library", "search")
+private val APP_LINK_PATHS = setOf("notification", "watch", "playlist", "channel", "c", "album", "library", "search", "listen")
 
 /** Whether a `limusic://` link names a screen the router opens. */
 fun isAppLinkAvailable(appPath: String?): Boolean = appPath in APP_LINK_PATHS

@@ -100,6 +100,12 @@ interface MediaPlayerHandler {
     /** Puts back the queue a click replaced, where it was left ("Back to …"). */
     fun backToPrevious()
 
+    /**
+     * Sets shuffle outright rather than cycling it (a playlist or album page's shuffle menu, a
+     * linked computer). [ShuffleMode.Dynamic] where the queue has no playlist radio is plain shuffle.
+     */
+    fun setShuffle(mode: ShuffleMode)
+
     /** A Listen Together guest's queue, as the host sent it. */
     fun playRoomQueue(
         tracks: List<Track>,
@@ -163,6 +169,15 @@ sealed class RepeatState {
     data object All : RepeatState()
 
     data object One : RepeatState()
+}
+
+/** The shuffle button's three states, in the order it cycles through them. */
+enum class ShuffleMode {
+    Off,
+    On,
+
+    /** Shuffle, plus suggestions from the playlist's radio between its tracks. */
+    Dynamic,
 }
 
 sealed class PlayerEvent {
@@ -232,6 +247,8 @@ data class ControlState(
     val isPreviousAvailable: Boolean,
     val isCrossfading: Boolean,
     val volume: Float, // 0f..1f
+    /** Dynamic shuffle: only ever true with [isShuffle]. */
+    val isDynamicShuffle: Boolean = false,
 )
 
 data class NowPlayingTrackState(
@@ -269,6 +286,12 @@ data class QueueData(
         val continuation: String? = null,
         /** Play the list shuffled (a page's Shuffle button). */
         val shuffle: Boolean = false,
+        /**
+         * The page shuffle menu's pick, which implies [shuffle] either way: true dynamic shuffle,
+         * false plain shuffle even when a sticky dynamic one would carry over. Null leaves it to
+         * sticky shuffle.
+         */
+        val dynamic: Boolean? = null,
         /** [continuation] is a `next` (watch queue) token, not a playlist page's. */
         val nextContinuation: Boolean = false,
         /** The track "Back to …" returns to, while it can. */
@@ -340,4 +363,8 @@ sealed class ToastType(
         val title: String,
     ) : ToastType(username)
 
+    /** Hosting with auto-admit on, someone came in without a tap. */
+    data class UserJoined(
+        val username: String,
+    ) : ToastType(username)
 }

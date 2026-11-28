@@ -29,6 +29,7 @@ import com.simohypers.limusic.ui.icon.PlayCircle
 import com.simohypers.limusic.ui.icon.Repeat
 import com.simohypers.limusic.ui.icon.RepeatOne
 import com.simohypers.limusic.ui.icon.Shuffle
+import com.simohypers.limusic.ui.icon.shuffleIcon
 import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.icon.SkipNext
 import com.simohypers.limusic.ui.icon.SkipPrevious
@@ -90,7 +91,7 @@ fun PlayerControlLayout(
                         )
                     } else {
                         Icon(
-                            imageVector = LimusicIcons.Shuffle,
+                            imageVector = controllerState.shuffleIcon,
                             tint = activeColor,
                             contentDescription = "",
                             modifier = Modifier.size(smallIcon.first),

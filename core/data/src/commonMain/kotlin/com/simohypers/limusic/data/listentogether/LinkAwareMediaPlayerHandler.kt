@@ -20,6 +20,7 @@ import com.simohypers.limusic.domain.mediaservice.handler.PlayerEvent
 import com.simohypers.limusic.domain.mediaservice.handler.PlaylistType
 import com.simohypers.limusic.domain.mediaservice.handler.QueueData
 import com.simohypers.limusic.domain.mediaservice.handler.RepeatState
+import com.simohypers.limusic.domain.mediaservice.handler.ShuffleMode
 import com.simohypers.limusic.domain.mediaservice.handler.SimpleMediaState
 import com.simohypers.limusic.domain.mediaservice.handler.ToastType
 import com.simohypers.limusic.domain.repository.DeviceLinkRepository
@@ -167,6 +168,8 @@ class LinkAwareMediaPlayerHandler(
                 here.copy(
                     isPlaying = link.isPlaying,
                     isShuffle = shuffle ?: link.playerQueue?.shuffle ?: false,
+                    // Off just sent ends dynamic too; on leaves it as the computer says.
+                    isDynamicShuffle = shuffle != false && link.playerQueue?.dynamic == true,
                     repeatState = (repeat ?: link.playerQueue?.repeat).toRepeatState(),
                     isLiked = song?.liked == true && song.videoId == link.track?.id,
                     isNextAvailable = true,
@@ -303,6 +306,15 @@ class LinkAwareMediaPlayerHandler(
 
     override fun backToPrevious() {
         if (!hostOnly()) local.backToPrevious()
+    }
+
+    /** The computer's shuffle has two states over the link: dynamic asks for plain shuffle there. */
+    override fun setShuffle(mode: ShuffleMode) {
+        if (hostOnly()) return
+        if (remote.value == null) return local.setShuffle(mode)
+        val on = mode != ShuffleMode.Off
+        deviceLink.remote(LinkRemote.SetShuffle(on))
+        expectMode(sentShuffle, on)
     }
 
     /** Anything started anywhere in the app plays where the music is: one song, or the list it was tapped in. */
@@ -543,7 +555,7 @@ private fun String?.toRepeatState(): RepeatState =
 private fun String.toSourceId(): String? = removePrefix("VL").takeIf { !it.startsWith("MPRE") && it.isNotBlank() }
 
 private fun LinkQueueItem.toTrack(): Track =
-    track.toTrack().copy(queued = queued, queuedEnd = queuedEnd, queuedFrom = queuedFrom, autoplay = autoplay)
+    track.toTrack().copy(queued = queued, queuedEnd = queuedEnd, queuedFrom = queuedFrom, autoplay = autoplay, suggested = suggested)
 
 internal fun RoomTrack.toTrack(): Track =
     Track(

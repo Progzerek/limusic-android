@@ -5,11 +5,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 import kotlin.coroutines.CoroutineContext
 
 private const val TAG = "ListenTogetherSession"
@@ -100,6 +104,19 @@ class ListenTogetherSession(
     private val _state = MutableStateFlow(ListenTogetherState())
     val state: StateFlow<ListenTogetherState> = _state.asStateFlow()
 
+    /**
+     * Host: answer every join request with an approval, no row to tap. A preference, so it sits
+     * outside [state] and outlives every room. Done here rather than on the server so it works with
+     * any server version, and a guest who becomes host goes by their own choice.
+     */
+    @Volatile
+    private var autoAdmit = false
+
+    private val _admitted = MutableSharedFlow<String>(extraBufferCapacity = 16)
+
+    /** The name of each person let in by [setAutoAdmit]'s rule, once they are actually in. */
+    val admitted: SharedFlow<String> = _admitted.asSharedFlow()
+
     private var pump: Job? = null
 
     /** Opens the socket. Joining a room is a separate, later step. */
@@ -150,6 +167,20 @@ class ListenTogetherSession(
             client.send(MessageTypes.APPROVE_JOIN, ApproveJoinPayload(userId = userId))
             _state.update { s -> s.copy(joinRequests = s.joinRequests.filterNot { it.userId == userId }) }
         }
+
+    /**
+     * Turning it on also lets in whoever is already waiting. Their rows go when `user_joined`
+     * comes back, so an approval lost to a dropped socket is sent again when the server re-sends
+     * the request.
+     */
+    fun setAutoAdmit(on: Boolean) {
+        if (autoAdmit == on) return
+        autoAdmit = on
+        val waiting = toAdmit(_state.value, on)
+        if (waiting.isNotEmpty()) {
+            launch { waiting.forEach { client.send(MessageTypes.APPROVE_JOIN, ApproveJoinPayload(userId = it)) } }
+        }
+    }
 
     fun rejectJoin(userId: String) =
         launch {
@@ -330,8 +361,13 @@ class ListenTogetherSession(
 
             MessageTypes.JOIN_REQUEST -> {
                 val p = payload as? JoinRequestPayload ?: return
+                if (joinAnswer(_state.value, p.userId, autoAdmit) == JoinAnswer.APPROVE) {
+                    // The toast comes with `user_joined`, once they are actually in.
+                    launch { client.send(MessageTypes.APPROVE_JOIN, ApproveJoinPayload(userId = p.userId)) }
+                    return
+                }
                 _state.update { s ->
-                    if (s.joinRequests.any { it.userId == p.userId }) {
+                    if (joinAnswer(s, p.userId, autoAdmit) == JoinAnswer.KNOWN) {
                         s
                     } else {
                         s.copy(joinRequests = s.joinRequests + PendingJoin(p.userId, p.username))
@@ -341,13 +377,18 @@ class ListenTogetherSession(
 
             MessageTypes.USER_JOINED -> {
                 val p = payload as? UserJoinedPayload ?: return
+                var new = false
                 _state.update { s ->
-                    if (s.members.any { it.userId == p.userId }) {
-                        s
+                    val rest = s.joinRequests.filterNot { it.userId == p.userId }
+                    new = s.members.none { it.userId == p.userId }
+                    if (new) {
+                        s.copy(joinRequests = rest, members = s.members + RoomMember(p.userId, p.username, isHost = false, isConnected = true))
                     } else {
-                        s.copy(members = s.members + RoomMember(p.userId, p.username, isHost = false, isConnected = true))
+                        s.copy(joinRequests = rest)
                     }
                 }
+                // Nobody tapped anything, so the host would not know otherwise.
+                if (new && autoAdmit && _state.value.isHost) _admitted.tryEmit(p.username)
             }
 
             MessageTypes.USER_LEFT -> {
@@ -457,6 +498,29 @@ class ListenTogetherSession(
      */
     private var pendingUsername: String = ""
 }
+
+internal enum class JoinAnswer { APPROVE, ASK, KNOWN }
+
+/**
+ * What to do with a join request: approve it on the spot, list it for the host, or nothing (a
+ * re-sent request already listed). A guest's own setting is not theirs to apply until they host.
+ */
+internal fun joinAnswer(
+    state: ListenTogetherState,
+    userId: String,
+    autoAdmit: Boolean,
+): JoinAnswer =
+    when {
+        autoAdmit && state.isHost -> JoinAnswer.APPROVE
+        state.joinRequests.any { it.userId == userId } -> JoinAnswer.KNOWN
+        else -> JoinAnswer.ASK
+    }
+
+/** Who to let in when auto-admit is set to [on]: everyone waiting, if on and hosting. */
+internal fun toAdmit(
+    state: ListenTogetherState,
+    on: Boolean,
+): List<String> = if (on && state.isHost) state.joinRequests.map { it.userId } else emptyList()
 
 private fun UserInfo.toMember() =
     RoomMember(

@@ -38,6 +38,12 @@ data class Track(
     val queuedFrom: String? = null,
     /** Brought in by autoplay: drawn under its divider, and what switching Autoplay off removes. */
     val autoplay: Boolean = false,
+    /**
+     * Lined up by dynamic shuffle between the playlist's own tracks, from the playlist's radio:
+     * the row's sparkle, and what turning shuffle off takes back out. Defaulted for queues saved
+     * before it existed.
+     */
+    val suggested: Boolean = false,
     /** This row's entry in a YouTube playlist: what removes it, and what tells two copies apart. */
     val setVideoId: String? = null,
     /**

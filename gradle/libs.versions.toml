@@ -1,6 +1,6 @@
 [versions]
 # App version
-version-name = "1.1.0-rc.6"
+version-name = "1.1.0-rc.7"
 
 android = "9.4.1"
 kotlin = "2.4.20"
@@ -87,7 +87,7 @@ nucleus-notification = "2.5.18"
 commonsIo = "2.5"
 packagedeps = "0.2.5"
 conveyor = "2.0"
-# Login sync: QR encode (Desktop) + decode (Android), and the Android scanner's camera
+# Listen Together QR codes: encode + decode, and the scanner's camera
 zxing = "3.5.4"
 camerax = "1.6.2"
 

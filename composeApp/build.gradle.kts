@@ -72,6 +72,12 @@ kotlin {
             // Google Cast (gated: real SDK for full builds, no-op stub for FOSS builds)
             implementation(projects.castEmpty)
 
+            // Listen Together QR codes: ZXing draws and reads them, CameraX feeds the scanner.
+            // Not ML Kit or Google's code scanner, which are proprietary.
+            implementation(libs.zxing.core)
+            implementation(libs.camera.camera2)
+            implementation(libs.camera.lifecycle)
+            implementation(libs.camera.view)
         }
         commonMain.dependencies {
             implementation(libs.runtime)

@@ -11,5 +11,8 @@ import com.simohypers.limusic.listentogether.ListenTogetherClient
 object ListenTogetherPrefs {
     /** Empty means [DEFAULT_SERVER_URL]. */
     const val SERVER_URL = "lt_server_url"
+
+    /** Hosting: join requests are approved without asking. TRUE or FALSE, off when unset. */
+    const val AUTO_ADMIT = "lt_auto_admit"
     const val DEFAULT_SERVER_URL = ListenTogetherClient.DEFAULT_SERVER_URL
 }

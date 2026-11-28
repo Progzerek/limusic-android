@@ -294,10 +294,11 @@ private fun LinkState.toDomain(paired: Boolean): DeviceLink {
         playerQueue =
             status?.let { st ->
                 LinkQueue(
-                    items = st.items.map { LinkQueueItem(it.track.toRoomTrack(), it.queued, it.queuedEnd, it.queuedFrom, it.autoplay) },
+                    items = st.items.map { LinkQueueItem(it.track.toRoomTrack(), it.queued, it.queuedEnd, it.queuedFrom, it.autoplay, it.suggested) },
                     offset = st.offset,
                     current = st.current,
                     shuffle = st.shuffle,
+                    dynamic = st.dynamic,
                     repeat = st.repeat,
                     source = st.source,
                     autoplay = st.autoplay,

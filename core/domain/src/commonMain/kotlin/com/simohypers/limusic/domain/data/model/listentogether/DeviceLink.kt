@@ -51,6 +51,8 @@ data class LinkQueue(
     /** The playing row, in [items]. */
     val current: Int,
     val shuffle: Boolean,
+    /** Dynamic shuffle, with [shuffle]. */
+    val dynamic: Boolean = false,
     /** "off" | "all" | "one" */
     val repeat: String,
     /** The playlist or album it plays from. */
@@ -67,6 +69,8 @@ data class LinkQueueItem(
     val queuedEnd: Boolean,
     val queuedFrom: String?,
     val autoplay: Boolean,
+    /** Lined up by dynamic shuffle. */
+    val suggested: Boolean = false,
 )
 
 data class LinkedDevice(

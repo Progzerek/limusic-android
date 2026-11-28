@@ -19,9 +19,18 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
     <uses-permission android:name="androidx.car.app.MEDIA_TEMPLATES" />
+    <!-- Scanning a Listen Together room's QR code. Asked for only when the scanner opens. -->
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <uses-feature
         android:name="android.hardware.type.automotive"
+        android:required="false" />
+    <!-- CAMERA implies a required camera, which would hide the app from devices without one. -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
         android:required="false" />
     <uses-feature
         android:name="android.hardware.wifi"
